@@ -375,6 +375,13 @@ function createFloatingWidget(): void {
   floatingWidget = document.createElement('div');
   floatingWidget.id = 'ai-devtools-floating-widget';
   floatingWidget.innerHTML = `
+    <div class="ai-devtools-drag-handle" data-drag-handle>
+      <svg width="6" height="10" viewBox="0 0 6 10" fill="currentColor">
+        <circle cx="1" cy="1" r="1"/><circle cx="5" cy="1" r="1"/>
+        <circle cx="1" cy="5" r="1"/><circle cx="5" cy="5" r="1"/>
+        <circle cx="1" cy="9" r="1"/><circle cx="5" cy="9" r="1"/>
+      </svg>
+    </div>
     <button class="ai-devtools-widget-btn" data-action="inspect" data-tooltip="Inspect Element">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M9 9l5 12 1.774-5.226L21 14 9 9z"/>
@@ -597,7 +604,7 @@ function showToast(message: string, type: 'info' | 'success' | 'warning' = 'info
 }
 
 /**
- * Make an element draggable
+ * Make an element draggable via its drag handle
  */
 function makeDraggable(element: HTMLElement): void {
   let isDragging = false;
@@ -607,8 +614,9 @@ function makeDraggable(element: HTMLElement): void {
   let initialTop = 0;
 
   element.addEventListener('mousedown', (e: MouseEvent) => {
-    // Don't drag if clicking a button
-    if ((e.target as HTMLElement).closest('button')) return;
+    // Only drag from the drag handle
+    const dragHandle = (e.target as HTMLElement).closest('[data-drag-handle]');
+    if (!dragHandle) return;
 
     isDragging = true;
     startX = e.clientX;

@@ -48,31 +48,35 @@
 </script>
 
 <div class="picker-container">
-  <div class="picker-header">Region: {regionWidth}×{regionHeight}px</div>
+  <div class="picker-header">Region {regionWidth}×{regionHeight}</div>
 
-  <button
-    class="btn btn-full btn-primary"
-    onclick={() => onSelect('tag', note.trim() || undefined)}
-  >
-    <Bookmark size={16} />
-    Tag for AI - Save context
-  </button>
+  <div class="btn-group">
+    <button
+      class="btn btn-primary"
+      onclick={() => onSelect('tag', note.trim() || undefined)}
+    >
+      <Bookmark size={14} />
+      Tag for AI
+    </button>
 
-  <button
-    class="btn btn-full"
-    onclick={() => onSelect('fix', note.trim() || undefined)}
-  >
-    <Wrench size={16} />
-    Fix - Something is broken
-  </button>
+    <div class="btn-row">
+      <button
+        class="btn"
+        onclick={() => onSelect('fix', note.trim() || undefined)}
+      >
+        <Wrench size={14} />
+        Fix
+      </button>
 
-  <button
-    class="btn btn-full"
-    onclick={() => onSelect('beautify', note.trim() || undefined)}
-  >
-    <Sparkles size={16} />
-    Beautify - Make it prettier
-  </button>
+      <button
+        class="btn"
+        onclick={() => onSelect('beautify', note.trim() || undefined)}
+      >
+        <Sparkles size={14} />
+        Beautify
+      </button>
+    </div>
+  </div>
 
   <input
     bind:this={inputEl}
@@ -86,104 +90,112 @@
 
 <style>
   .picker-container {
-    background: rgba(0, 0, 0, 0.96);
-    backdrop-filter: blur(32px) saturate(200%);
-    -webkit-backdrop-filter: blur(32px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-    padding: 14px;
-    min-width: 260px;
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    padding: 12px;
+    min-width: 220px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
   .picker-header {
-    margin-bottom: 12px;
-    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 10px;
+    padding: 0 2px;
+    color: rgba(255, 255, 255, 0.4);
     font-size: 10px;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     font-weight: 500;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
+  }
+
+  .btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  .btn-row .btn {
+    flex: 1;
   }
 
   .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 10px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.04);
-    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
     cursor: pointer;
     text-align: center;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     font-family: inherit;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
   }
 
   .btn:hover {
     background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
-    transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #fff;
   }
 
   .btn:active {
-    transform: scale(0.98) translateY(0);
+    transform: scale(0.98);
   }
 
   .btn :global(svg) {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     flex-shrink: 0;
-  }
-
-  .btn-full {
-    display: flex;
-    width: 100%;
-    margin-bottom: 10px;
-    text-align: left;
-    justify-content: flex-start;
-  }
-
-  .btn-full:nth-last-of-type(1) {
-    margin-bottom: 14px;
+    opacity: 0.7;
   }
 
   .btn-primary {
     background: rgba(255, 255, 255, 0.95);
-    border-color: rgba(255, 255, 255, 1);
-    color: #000000;
+    border-color: transparent;
+    color: #000;
+  }
+
+  .btn-primary :global(svg) {
+    opacity: 0.8;
   }
 
   .btn-primary:hover {
-    background: rgba(255, 255, 255, 1);
-    border-color: rgba(255, 255, 255, 1);
+    background: #fff;
   }
 
   .note-input {
     width: 100%;
-    padding: 10px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    font-size: 12px;
-    color: #ffffff;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
     background: rgba(255, 255, 255, 0.04);
     outline: none;
     font-family: inherit;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
   }
 
   .note-input:focus {
-    border-color: rgba(255, 255, 255, 0.25);
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.06);
   }
 
   .note-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.3);
   }
 </style>

@@ -100,25 +100,55 @@
   <!-- Actions -->
   <div class="actions">
     <button class="btn" onclick={handleInspect}>
-      <span class="btn-label">Inspect Element</span>
-      <span class="btn-hint">Option + Click</span>
+      <div class="btn-left">
+        <span class="btn-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 9l5 12 1.774-5.226L21 14 9 9z"/>
+            <path d="M16.071 16.071l4.243 4.243"/>
+            <path d="M7.188 2.239l.777 2.897M5.136 7.965l-2.897-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
+          </svg>
+        </span>
+        <span class="btn-label">Inspect Element</span>
+      </div>
+      <span class="btn-hint">⌥ Click</span>
     </button>
 
     {#if !isRecording}
       <button class="btn" onclick={handleStartRecording}>
-        <span class="btn-label">Start Recording</span>
+        <div class="btn-left">
+          <span class="btn-icon record">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="12" r="7"/>
+            </svg>
+          </span>
+          <span class="btn-label">Start Recording</span>
+        </div>
         <span class="btn-hint">Capture flow</span>
       </button>
     {:else}
       <button class="btn recording" onclick={handleStopRecording}>
-        <span class="btn-label">Stop Recording</span>
+        <div class="btn-left">
+          <span class="btn-icon stop">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2"/>
+            </svg>
+          </span>
+          <span class="btn-label">Stop Recording</span>
+        </div>
         <span class="btn-hint">Send to AI</span>
       </button>
     {/if}
 
     <button class="btn" onclick={handleDiagnostics}>
-      <span class="btn-label">Page Diagnostics</span>
-      <span class="btn-hint">Errors & performance</span>
+      <div class="btn-left">
+        <span class="btn-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        </span>
+        <span class="btn-label">Page Diagnostics</span>
+      </div>
+      <span class="btn-hint">Health check</span>
     </button>
   </div>
 
@@ -271,6 +301,31 @@
   .btn.recording:hover {
     background: rgba(248, 113, 113, 0.15);
     border-color: rgba(248, 113, 113, 0.3);
+  }
+
+  .btn-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .btn-icon svg {
+    color: inherit;
+  }
+
+  .btn-icon.record {
+    color: rgba(248, 113, 113, 0.8);
+  }
+
+  .btn-icon.stop {
+    color: #f87171;
   }
 
   .btn-label {

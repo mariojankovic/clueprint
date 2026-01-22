@@ -70,38 +70,17 @@ function copyStaticFiles() {
     path.join(devtoolsDir, 'panel.html')
   );
 
-  // Create icons directory and placeholder icons
-  const iconsDir = path.join(distDir, 'icons');
-  if (!fs.existsSync(iconsDir)) {
-    fs.mkdirSync(iconsDir, { recursive: true });
+  // Copy icons directory
+  const srcIconsDir = path.join(__dirname, 'icons');
+  const distIconsDir = path.join(distDir, 'icons');
+  if (!fs.existsSync(distIconsDir)) {
+    fs.mkdirSync(distIconsDir, { recursive: true });
   }
 
-  // Create simple SVG icons as placeholders
-  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-    <rect width="128" height="128" fill="#0066ff" rx="16"/>
-    <text x="64" y="80" font-family="Arial" font-size="60" fill="white" text-anchor="middle">🔧</text>
-  </svg>`;
-
-  // For now, create placeholder PNG files (in production, use real icons)
-  const sizes = [16, 32, 48, 128];
-  for (const size of sizes) {
-    const iconPath = path.join(iconsDir, `icon${size}.png`);
-    if (!fs.existsSync(iconPath)) {
-      // Create a simple placeholder (1x1 blue pixel PNG)
-      // In production, replace with actual icons
-      const pngHeader = Buffer.from([
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
-        0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1
-        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-        0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41,
-        0x54, 0x08, 0xd7, 0x63, 0x08, 0x60, 0xf8, 0x0f,
-        0x00, 0x00, 0x84, 0x00, 0x81, 0x4e, 0x89, 0x43,
-        0x8e, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
-        0x44, 0xae, 0x42, 0x60, 0x82
-      ]);
-      fs.writeFileSync(iconPath, pngHeader);
-    }
+  // Copy clueprint.png to dist/icons
+  const srcIcon = path.join(srcIconsDir, 'clueprint.png');
+  if (fs.existsSync(srcIcon)) {
+    fs.copyFileSync(srcIcon, path.join(distIconsDir, 'clueprint.png'));
   }
 
   console.log('Static files copied');

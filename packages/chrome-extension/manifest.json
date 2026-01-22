@@ -3,6 +3,11 @@
   "name": "Clueprint",
   "version": "0.1.0",
   "description": "Give your AI deep browser visibility - element selection, error monitoring, flow recording",
+  "icons": {
+    "16": "icons/clueprint.png",
+    "48": "icons/clueprint.png",
+    "128": "icons/clueprint.png"
+  },
   "permissions": [
     "activeTab",
     "scripting",
@@ -26,7 +31,11 @@
   ],
   "devtools_page": "devtools/devtools.html",
   "action": {
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/clueprint.png",
+      "48": "icons/clueprint.png"
+    }
   },
   "commands": {
     "_execute_action": {
