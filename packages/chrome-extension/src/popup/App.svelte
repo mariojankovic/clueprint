@@ -1,17 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import {
-    Target,
-    Circle,
-    Square,
-    Activity,
-    Zap,
-    Command,
-    Option,
-    MousePointer2,
-    Scan,
-    PanelBottomOpen
-  } from 'lucide-svelte';
 
   // State
   let isActive = $state(false);
@@ -73,11 +61,6 @@
     window.close();
   }
 
-  async function handleShowToolbar() {
-    await sendToActiveTab({ type: 'SHOW_WIDGET' });
-    window.close();
-  }
-
   // Listen for status updates
   onMount(() => {
     fetchStatus();
@@ -96,122 +79,64 @@
 </script>
 
 <div class="container">
-  <!-- Header with glassmorphism -->
+  <!-- Header -->
   <header class="header">
-    <div class="header-glow"></div>
-    <div class="header-content">
-      <div class="logo">
-        <Zap size={24} strokeWidth={2.5} />
-      </div>
-      <h1>Clueprint</h1>
-      <p>Give your AI deep browser visibility</p>
-    </div>
+    <h1 class="logo">clueprint</h1>
+    <p class="tagline">browser visibility for AI</p>
   </header>
 
-  <!-- Status Bar -->
-  <div class="status-bar">
+  <!-- Status -->
+  <div class="status">
     <div class="status-item">
-      <span class="status-dot" class:active={isActive} class:recording={isRecording}></span>
-      <span>{isRecording ? 'Recording...' : isActive ? 'Active' : 'Inactive'}</span>
+      <span class="dot" class:active={isActive} class:recording={isRecording}></span>
+      <span>{isRecording ? 'Recording' : isActive ? 'Active' : 'Ready'}</span>
     </div>
     <div class="status-item">
-      <span class="status-dot" class:active={mcpConnected}></span>
-      <span>MCP: {mcpConnected ? 'Connected' : 'Disconnected'}</span>
+      <span class="dot" class:active={mcpConnected}></span>
+      <span>MCP {mcpConnected ? 'connected' : 'waiting'}</span>
     </div>
   </div>
 
   <!-- Actions -->
   <div class="actions">
-    <div class="action-group">
-      <h3>Element Selection</h3>
-      <button class="btn primary" onclick={handleInspect}>
-        <div class="btn-icon">
-          <Target size={20} />
-        </div>
-        <div class="btn-content">
-          <div class="btn-title">Inspect Element</div>
-          <div class="btn-desc">Click any element to capture</div>
-        </div>
-      </button>
-    </div>
+    <button class="btn" onclick={handleInspect}>
+      <span class="btn-label">Inspect Element</span>
+      <span class="btn-hint">Option + Click</span>
+    </button>
 
-    <div class="action-group">
-      <h3>Recording</h3>
-      {#if !isRecording}
-        <button class="btn glass" onclick={handleStartRecording}>
-          <div class="btn-icon recording-icon">
-            <Circle size={20} />
-          </div>
-          <div class="btn-content">
-            <div class="btn-title">Start Recording</div>
-            <div class="btn-desc">Capture a flow of actions</div>
-          </div>
-        </button>
-      {:else}
-        <button class="btn danger" onclick={handleStopRecording}>
-          <div class="btn-icon">
-            <Square size={18} />
-          </div>
-          <div class="btn-content">
-            <div class="btn-title">Stop Recording</div>
-            <div class="btn-desc">End and send to AI</div>
-          </div>
-        </button>
-      {/if}
-    </div>
-
-    <div class="action-group">
-      <h3>Diagnostics</h3>
-      <button class="btn glass" onclick={handleDiagnostics}>
-        <div class="btn-icon">
-          <Activity size={20} />
-        </div>
-        <div class="btn-content">
-          <div class="btn-title">Page Health Check</div>
-          <div class="btn-desc">Errors, performance, accessibility</div>
-        </div>
+    {#if !isRecording}
+      <button class="btn" onclick={handleStartRecording}>
+        <span class="btn-label">Start Recording</span>
+        <span class="btn-hint">Capture flow</span>
       </button>
-    </div>
-
-    <div class="action-group">
-      <h3>Quick Access</h3>
-      <button class="btn glass" onclick={handleShowToolbar}>
-        <div class="btn-icon">
-          <PanelBottomOpen size={20} />
-        </div>
-        <div class="btn-content">
-          <div class="btn-title">Show Floating Toolbar</div>
-          <div class="btn-desc">Pin controls to the page</div>
-        </div>
+    {:else}
+      <button class="btn recording" onclick={handleStopRecording}>
+        <span class="btn-label">Stop Recording</span>
+        <span class="btn-hint">Send to AI</span>
       </button>
-    </div>
+    {/if}
+
+    <button class="btn" onclick={handleDiagnostics}>
+      <span class="btn-label">Page Diagnostics</span>
+      <span class="btn-hint">Errors & performance</span>
+    </button>
   </div>
 
   <!-- Shortcuts -->
   <div class="shortcuts">
-    <h3>Keyboard Shortcuts</h3>
     <div class="shortcut">
-      <span>Inspect element</span>
-      <div class="shortcut-keys">
-        <kbd><Option size={12} /></kbd>
-        <span>+</span>
-        <kbd><MousePointer2 size={12} /></kbd>
-      </div>
+      <span>Inspect</span>
+      <kbd>⌥ Click</kbd>
     </div>
     <div class="shortcut">
-      <span>Select region</span>
-      <div class="shortcut-keys">
-        <kbd><Command size={12} /></kbd>
-        <kbd>Shift</kbd>
-        <span>+</span>
-        <kbd><Scan size={12} /></kbd>
-      </div>
+      <span>Region</span>
+      <kbd>⌘⇧ Drag</kbd>
     </div>
   </div>
 
   <!-- Footer -->
   <footer class="footer">
-    Tell your AI: "I selected an element" or "Check this page"
+    <p>Tell your AI: "check the element I selected"</p>
   </footer>
 </div>
 
@@ -223,83 +148,53 @@
   }
 
   :global(body) {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 14px;
-    min-width: 300px;
-    background: #000000;
-    color: #ffffff;
-    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    background: #000;
+    color: #fff;
   }
 
   .container {
-    position: relative;
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 20px 20px;
   }
 
-  /* Header with gradient and glow */
+  /* Header */
   .header {
-    position: relative;
-    padding: 20px 16px;
     text-align: center;
-    overflow: hidden;
-  }
-
-  .header-glow {
-    position: absolute;
-    top: -50%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 200px;
-    height: 200px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.06) 0%, transparent 70%);
-    pointer-events: none;
-  }
-
-  .header-content {
-    position: relative;
-    z-index: 1;
+    margin-bottom: 24px;
   }
 
   .logo {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 14px;
-    margin-bottom: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  }
-
-  .logo :global(svg) {
-    color: white;
-  }
-
-  .header h1 {
-    font-size: 18px;
-    font-weight: 600;
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 28px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
     color: #fff;
     margin-bottom: 4px;
   }
 
-  .header p {
+  .tagline {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.6);
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.02em;
   }
 
-  /* Status bar with glassmorphism */
-  .status-bar {
+  /* Status */
+  .status {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    margin: 0 12px;
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(32px) saturate(200%);
-    -webkit-backdrop-filter: blur(32px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    justify-content: center;
+    gap: 20px;
+    padding: 14px 0;
+    margin-bottom: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
   }
 
   .status-item {
@@ -307,207 +202,125 @@
     align-items: center;
     gap: 8px;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.5);
   }
 
-  .status-dot {
-    width: 8px;
-    height: 8px;
+  .dot {
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.2);
     transition: all 0.3s ease;
   }
 
-  .status-dot.active {
-    background: #34d399;
-    box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+  .dot.active {
+    background: #4ade80;
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
   }
 
-  .status-dot.recording {
+  .dot.recording {
     background: #f87171;
-    box-shadow: 0 0 10px rgba(248, 113, 113, 0.5);
-    animation: pulse 1s infinite;
+    box-shadow: 0 0 8px rgba(248, 113, 113, 0.5);
+    animation: pulse 1.5s ease-in-out infinite;
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.7; transform: scale(1.1); }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
   }
 
   /* Actions */
   .actions {
-    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
   }
 
-  .action-group {
-    margin-bottom: 16px;
-  }
-
-  .action-group h3 {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: rgba(255, 255, 255, 0.4);
-    margin-bottom: 8px;
-    padding-left: 4px;
-  }
-
-  /* Glassmorphism buttons */
   .btn {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 14px;
     width: 100%;
-    padding: 14px 16px;
-    margin-bottom: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    padding: 16px 18px;
     background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(32px) saturate(200%);
-    -webkit-backdrop-filter: blur(32px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    color: #fff;
     cursor: pointer;
-    font-size: 13px;
-    text-align: left;
-    color: #ffffff;
     transition: all 0.2s ease;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
   }
 
   .btn:hover {
     background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.12);
     transform: translateY(-1px);
   }
 
   .btn:active {
-    transform: translateY(0) scale(0.99);
+    transform: translateY(0);
   }
 
-  .btn.primary {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.12);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  .btn.recording {
+    background: rgba(248, 113, 113, 0.1);
+    border-color: rgba(248, 113, 113, 0.2);
   }
 
-  .btn.primary:hover {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  .btn.recording:hover {
+    background: rgba(248, 113, 113, 0.15);
+    border-color: rgba(248, 113, 113, 0.3);
   }
 
-  .btn.danger {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.3);
-    box-shadow: 0 8px 24px rgba(239, 68, 68, 0.2);
-  }
-
-  .btn.danger:hover {
-    background: rgba(239, 68, 68, 0.25);
-    border-color: rgba(239, 68, 68, 0.4);
-  }
-
-  .btn-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    background: rgba(255, 255, 255, 0.06);
-    border-radius: 10px;
-  }
-
-  .btn-icon :global(svg) {
-    color: #ffffff;
-  }
-
-  .btn.primary .btn-icon {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .recording-icon :global(svg) {
-    color: #f87171;
-  }
-
-  .btn-content {
-    flex: 1;
-  }
-
-  .btn-title {
+  .btn-label {
     font-weight: 500;
-    color: #ffffff;
+    font-size: 13px;
   }
 
-  .btn-desc {
+  .btn-hint {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.45);
-    margin-top: 2px;
-  }
-
-  .btn.primary .btn-desc {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.35);
   }
 
   /* Shortcuts */
   .shortcuts {
-    padding: 14px 16px;
-    margin: 0 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 14px;
-  }
-
-  .shortcuts h3 {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: rgba(255, 255, 255, 0.35);
-    margin-bottom: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    padding: 16px 0;
+    margin-top: 16px;
   }
 
   .shortcut {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 6px 0;
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .shortcut-keys {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .shortcut-keys span {
-    color: rgba(255, 255, 255, 0.25);
-    font-size: 10px;
+    gap: 8px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.35);
   }
 
   kbd {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    height: 22px;
-    padding: 0 6px;
+    padding: 4px 8px;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 6px;
     font-family: inherit;
     font-size: 10px;
-    color: rgba(255, 255, 255, 0.6);
-  }
-
-  kbd :global(svg) {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.5);
   }
 
   /* Footer */
   .footer {
-    padding: 16px;
     text-align: center;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.35);
+    padding-top: 16px;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
+    margin-top: auto;
+  }
+
+  .footer p {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+    font-style: italic;
   }
 </style>

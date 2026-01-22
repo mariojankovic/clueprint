@@ -1,98 +1,173 @@
-# Clueprint Chrome Extension
+# Clueprint
 
-Browser visibility for AI assistants. Select elements or regions to capture context and share with your AI coding assistant.
+Browser visibility for AI assistants. Select elements or regions to capture context and share with your AI coding assistant (Claude Code, Cursor, etc.)
+
+## Quick Start
+
+```bash
+# Clone the repo
+git clone https://github.com/yourusername/clueprint.git
+cd clueprint
+
+# Run setup
+npx clueprint setup
+```
+
+The setup wizard will:
+1. Install dependencies
+2. Build the Chrome extension
+3. Build the MCP server
+4. Configure Claude Code integration
+
+Then follow the on-screen instructions to load the extension in Chrome.
+
+## What is Clueprint?
+
+Clueprint gives AI assistants visibility into your browser. Instead of describing what you see or copy-pasting HTML, you can:
+
+- **Option+Click** any element to capture its details, styles, and context
+- **Cmd+Shift+Drag** (Mac) / **Ctrl+Shift+Drag** (Windows) to select a region
+- **Record flows** to capture user interactions, network requests, and console errors
+- **Ask Claude** about what's happening in the browser
+
+The captured data is sent to Claude via MCP (Model Context Protocol), so Claude can see exactly what you're looking at.
 
 ## Features
 
-- **Option+Click**: Select individual elements to capture their details
-- **Cmd+Shift+Drag** (Mac) / **Ctrl+Shift+Drag** (Windows): Select a region of the page
-- **Intent-based capture**:
-  - **Tag**: Minimal context for AI awareness
-  - **Fix**: Includes console errors and network failures
-  - **Beautify**: Includes screenshot and aesthetic analysis
+### Element Selection (Option+Click)
+Hold Option (Alt on Windows) and click any element to capture:
+- Element details (tag, classes, attributes)
+- Computed styles (layout, spacing, colors)
+- Parent context and siblings
+- Console errors related to this element
+- Network failures
 
-## Prerequisites
+### Region Selection (Cmd+Shift+Drag)
+Hold Cmd+Shift and drag to select a region:
+- Screenshot of the selected area
+- All elements within the region
+- DOM structure
+- Aesthetic analysis (colors, typography, spacing)
 
-- Node.js 18+
-- npm or pnpm
+### Flow Recording
+Record user interactions to debug issues:
+- Clicks, scrolls, inputs
+- Network requests and errors
+- Console logs and errors
+- Layout shifts
 
-## Installation
-
-1. Install dependencies:
+## CLI Commands
 
 ```bash
-cd packages/chrome-extension
-npm install
+# Full setup (install, build, configure MCP)
+npx clueprint setup
+
+# Check installation status
+npx clueprint status
+
+# Start MCP server manually
+npx clueprint start
 ```
 
-2. Build the extension:
+## Manual Installation
+
+If you prefer manual setup:
+
+### 1. Install Dependencies
 
 ```bash
-npm run build
+pnpm install
 ```
 
-This creates a `dist/` folder with the built extension.
+### 2. Build
 
-## Loading in Chrome
+```bash
+# Build everything
+pnpm run build
+
+# Or build individually
+pnpm run build:extension
+pnpm run build:server
+```
+
+### 3. Load Chrome Extension
 
 1. Open Chrome and navigate to `chrome://extensions/`
 2. Enable **Developer mode** (toggle in top right)
 3. Click **Load unpacked**
-4. Select the `dist/` folder inside `packages/chrome-extension/`
+4. Select `packages/chrome-extension/dist`
 
-The extension icon should appear in your toolbar.
+### 4. Configure Claude Code MCP
+
+Add to your `~/.claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "ai-browser-devtools": {
+      "command": "node",
+      "args": ["/path/to/clueprint/packages/mcp-server/dist/index.js"]
+    }
+  }
+}
+```
+
+Then restart Claude Code.
 
 ## Development
 
-Run the build in watch mode for automatic rebuilds:
-
 ```bash
-npm run watch
+# Watch mode for extension
+cd packages/chrome-extension
+pnpm run watch
+
+# Watch mode for MCP server
+cd packages/mcp-server
+pnpm run dev
 ```
 
-After changes, click the refresh icon on the extension card in `chrome://extensions/` to reload.
-
-## Usage
-
-### Inspect Mode (Option+Click)
-
-1. Hold **Option** (Mac) or **Alt** (Windows) to activate inspect mode
-2. Hover over elements to see them highlighted
-3. Click an element to open the intent picker
-4. Choose an action:
-   - **Tag for AI**: Save element context
-   - **Fix**: Include console/network errors
-   - **Beautify**: Include screenshot for styling help
-5. Optionally add a note
-6. Press Enter or click a button to capture
-
-### Region Select (Cmd+Shift+Drag)
-
-1. Hold **Cmd+Shift** (Mac) or **Ctrl+Shift** (Windows)
-2. Drag to select a region
-3. Choose an intent from the picker
-4. The region and contained elements are captured
-
-### Toolbar Button
-
-Click the extension icon in your toolbar to access quick actions without keyboard shortcuts.
-
-## MCP Server
-
-The extension includes an MCP (Model Context Protocol) server that AI assistants can use to retrieve captured data. See the main project documentation for MCP integration details.
+After changes, refresh the extension in `chrome://extensions/`.
 
 ## Project Structure
 
 ```
-src/
-├── background/     # Service worker
-├── content/        # Content script (injected into pages)
-│   ├── capture/    # DOM and screenshot capture
-│   ├── selection/  # Inspect and free-select modes
-│   ├── ui/         # Shadow DOM mounting utilities
-│   └── utils/      # Selectors, styles utilities
-├── popup/          # Extension popup (Svelte)
-├── shared/         # Shared Svelte components
-├── devtools/       # DevTools panel
-└── types/          # TypeScript type definitions
+packages/
+├── chrome-extension/     # Chrome extension (content script, popup, background)
+│   ├── src/
+│   │   ├── background/   # Service worker
+│   │   ├── content/      # Injected into pages
+│   │   │   ├── capture/  # DOM and screenshot capture
+│   │   │   ├── monitoring/  # Console, network, performance
+│   │   │   └── selection/   # Inspect and region select modes
+│   │   ├── popup/        # Extension popup (Svelte)
+│   │   └── types/        # TypeScript types
+│   └── dist/             # Built extension (load this in Chrome)
+│
+├── mcp-server/           # MCP server for Claude integration
+│   ├── src/
+│   │   ├── tools/        # MCP tool handlers
+│   │   └── analysis/     # Report formatting
+│   └── dist/             # Built server
+│
+└── cli/                  # Setup CLI
+    └── src/
+        └── commands/     # setup, status, start
 ```
+
+## How It Works
+
+1. **Chrome Extension** runs on every page, monitoring console errors, network requests, and enabling element selection
+2. **Extension Background** maintains a WebSocket connection to the MCP server
+3. **MCP Server** exposes tools that Claude can call to get browser data
+4. **Claude Code** calls these tools when you ask questions about what's in the browser
+
+## Requirements
+
+- Node.js 18+
+- pnpm
+- Chrome browser
+- Claude Code (or any MCP-compatible AI assistant)
+
+## License
+
+MIT

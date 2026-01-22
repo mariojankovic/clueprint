@@ -154,13 +154,14 @@
   }
 
   .btn-primary {
-    background: rgba(99, 102, 241, 0.15);
-    border-color: rgba(99, 102, 241, 0.3);
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(255, 255, 255, 1);
+    color: #000000;
   }
 
   .btn-primary:hover {
-    background: rgba(99, 102, 241, 0.25);
-    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(255, 255, 255, 1);
+    border-color: rgba(255, 255, 255, 1);
   }
 
   .note-input {

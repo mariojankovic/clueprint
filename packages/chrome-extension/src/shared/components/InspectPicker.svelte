@@ -36,7 +36,6 @@
   }
 
   onMount(() => {
-    setTimeout(() => inputEl?.focus(), 50);
     document.addEventListener('keydown', handleEscape, true);
     setTimeout(() => document.addEventListener('click', handleClickOutside), 100);
   });
@@ -51,40 +50,37 @@
   <div class="picker-header">{elementName}</div>
 
   <button
-    class="btn btn-primary"
+    class="btn btn-full btn-primary"
     onclick={() => onSelect('tag', instruction.trim() || undefined)}
   >
     <Bookmark size={16} />
     Tag for AI
   </button>
 
+  <button
+    class="btn btn-full"
+    onclick={() => onSelect('fix', instruction.trim() || undefined)}
+  >
+    <Wrench size={16} />
+    Fix
+  </button>
+
+  <button
+    class="btn btn-full"
+    onclick={() => onSelect('beautify', instruction.trim() || undefined)}
+  >
+    <Sparkles size={16} />
+    Beautify
+  </button>
+
   <input
     bind:this={inputEl}
     bind:value={instruction}
     type="text"
-    class="picker-input"
+    class="note-input"
     placeholder="Add a note (optional)..."
     onkeydown={handleKeydown}
   />
-
-  <div class="btn-row">
-    <button
-      class="btn"
-      onclick={() => onSelect('fix', instruction.trim() || undefined)}
-    >
-      <Wrench size={16} />
-      Fix
-    </button>
-    <button
-      class="btn"
-      onclick={() => onSelect('beautify', instruction.trim() || undefined)}
-    >
-      <Sparkles size={16} />
-      Beautify
-    </button>
-  </div>
-
-  <div class="picker-hint">Press Enter to tag, or choose an action</div>
 </div>
 
 <style>
@@ -110,37 +106,7 @@
     text-transform: uppercase;
   }
 
-  .picker-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    font-size: 13px;
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.04);
-    margin-bottom: 12px;
-    outline: none;
-    font-family: inherit;
-    transition: all 0.2s ease;
-  }
-
-  .picker-input:focus {
-    border-color: rgba(255, 255, 255, 0.25);
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
-  }
-
-  .picker-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
-  }
-
-  .btn-row {
-    display: flex;
-    gap: 12px;
-  }
-
   .btn {
-    flex: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -156,18 +122,6 @@
     font-weight: 500;
     font-family: inherit;
     transition: all 0.2s ease;
-  }
-
-  .btn-primary {
-    width: 100%;
-    margin-bottom: 12px;
-    background: rgba(99, 102, 241, 0.15);
-    border-color: rgba(99, 102, 241, 0.3);
-  }
-
-  .btn-primary:hover {
-    background: rgba(99, 102, 241, 0.25);
-    border-color: rgba(99, 102, 241, 0.4);
   }
 
   .btn:hover {
@@ -186,10 +140,49 @@
     flex-shrink: 0;
   }
 
-  .picker-hint {
-    margin-top: 10px;
+  .btn-full {
+    display: flex;
+    width: 100%;
+    margin-bottom: 10px;
+    text-align: left;
+    justify-content: flex-start;
+  }
+
+  .btn-full:last-of-type {
+    margin-bottom: 14px;
+  }
+
+  .btn-primary {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(255, 255, 255, 1);
+    color: #000000;
+  }
+
+  .btn-primary:hover {
+    background: rgba(255, 255, 255, 1);
+    border-color: rgba(255, 255, 255, 1);
+  }
+
+  .note-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    font-size: 12px;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.04);
+    outline: none;
+    font-family: inherit;
+    transition: all 0.2s ease;
+  }
+
+  .note-input:focus {
+    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  }
+
+  .note-input::placeholder {
     color: rgba(255, 255, 255, 0.35);
-    font-size: 10px;
-    text-align: center;
   }
 </style>

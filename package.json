@@ -7,9 +7,12 @@
     "build": "pnpm -r build",
     "build:extension": "pnpm --filter chrome-extension build",
     "build:server": "pnpm --filter mcp-server build",
+    "build:cli": "pnpm --filter clueprint build",
     "dev:server": "pnpm --filter mcp-server dev",
     "clean": "pnpm -r clean",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "setup": "node packages/cli/dist/index.js setup",
+    "status": "node packages/cli/dist/index.js status"
   },
   "devDependencies": {
     "typescript": "^5.3.3"
