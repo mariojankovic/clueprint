@@ -1,0 +1,273 @@
+/**
+ * Clueprint - Overlay Styles
+ * Only for elements that are NOT using Shadow DOM
+ * Intent pickers and confirmations now use Shadow DOM for isolation
+ */
+
+/* Highlight overlay for inspect mode */
+#ai-devtools-highlight {
+  position: fixed !important;
+  pointer-events: none !important;
+  border: 2px solid #0066ff !important;
+  background: rgba(0, 102, 255, 0.1) !important;
+  z-index: 2147483647 !important;
+  transition: all 0.1s ease !important;
+  border-radius: 4px !important;
+  box-sizing: border-box !important;
+}
+
+/* Element label tooltip */
+#ai-devtools-element-label {
+  position: fixed !important;
+  pointer-events: none !important;
+  background: #0066ff !important;
+  color: white !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Monaco, monospace !important;
+  font-size: 11px !important;
+  z-index: 2147483647 !important;
+  white-space: nowrap !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  box-sizing: border-box !important;
+}
+
+/* Selection rectangle for free-select mode */
+#ai-devtools-selection {
+  position: fixed !important;
+  border: 2px dashed #0066ff !important;
+  background: rgba(0, 102, 255, 0.08) !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+  box-sizing: border-box !important;
+}
+
+/* Recording indicator */
+#ai-devtools-recording-indicator {
+  position: fixed !important;
+  top: 10px !important;
+  right: 10px !important;
+  background: #f44336 !important;
+  color: white !important;
+  padding: 8px 16px !important;
+  border-radius: 20px !important;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4) !important;
+  animation: ai-devtools-pulse 2s infinite !important;
+  box-sizing: border-box !important;
+}
+
+#ai-devtools-recording-indicator::before {
+  content: '' !important;
+  width: 8px !important;
+  height: 8px !important;
+  background: white !important;
+  border-radius: 50% !important;
+  animation: ai-devtools-blink 1s infinite !important;
+}
+
+@keyframes ai-devtools-pulse {
+  0%, 100% { box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4); }
+  50% { box-shadow: 0 2px 16px rgba(244, 67, 54, 0.6); }
+}
+
+@keyframes ai-devtools-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* High-contrast mode support */
+@media (prefers-contrast: high) {
+  #ai-devtools-highlight {
+    border-width: 3px !important;
+    background: rgba(0, 102, 255, 0.2) !important;
+  }
+
+  #ai-devtools-selection {
+    border-width: 3px !important;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  #ai-devtools-highlight,
+  #ai-devtools-selection,
+  #ai-devtools-recording-indicator {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ========================================
+   Floating Widget Toolbar (Horizontal Pill)
+   ======================================== */
+
+#ai-devtools-floating-widget {
+  position: fixed !important;
+  bottom: 24px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 2147483646 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 8px 12px !important;
+  background: rgba(0, 0, 0, 0.96) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 100px !important;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
+  backdrop-filter: blur(32px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(200%) !important;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  box-sizing: border-box !important;
+  user-select: none !important;
+}
+
+/* Divider between button groups */
+.ai-devtools-widget-divider {
+  width: 1px !important;
+  height: 20px !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  margin: 0 4px !important;
+}
+
+/* Icon buttons */
+.ai-devtools-widget-btn {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 50% !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  box-sizing: border-box !important;
+}
+
+.ai-devtools-widget-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 1) !important;
+}
+
+.ai-devtools-widget-btn:active {
+  transform: scale(0.92) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.ai-devtools-widget-btn svg {
+  flex-shrink: 0 !important;
+}
+
+/* Tooltip on hover */
+.ai-devtools-widget-btn::before {
+  content: attr(data-tooltip) !important;
+  position: absolute !important;
+  bottom: calc(100% + 10px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) translateY(4px) !important;
+  padding: 8px 12px !important;
+  background: rgba(0, 0, 0, 0.96) !important;
+  color: #ffffff !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  border-radius: 10px !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transition: all 0.15s ease !important;
+  pointer-events: none !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ai-devtools-widget-btn::after {
+  content: '' !important;
+  position: absolute !important;
+  bottom: calc(100% + 6px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  border: 5px solid transparent !important;
+  border-top-color: rgba(0, 0, 0, 0.96) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transition: all 0.15s ease !important;
+  pointer-events: none !important;
+}
+
+.ai-devtools-widget-btn:hover::before {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: translateX(-50%) translateY(0) !important;
+}
+
+.ai-devtools-widget-btn:hover::after {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Active button state (when mode is enabled) */
+.ai-devtools-widget-btn.active {
+  background: rgba(99, 102, 241, 0.25) !important;
+  color: #a5b4fc !important;
+}
+
+.ai-devtools-widget-btn.active:hover {
+  background: rgba(99, 102, 241, 0.35) !important;
+}
+
+.ai-devtools-widget-btn.active svg {
+  color: #a5b4fc !important;
+}
+
+/* Record button special styling */
+.ai-devtools-record-btn svg {
+  color: #ef4444 !important;
+}
+
+.ai-devtools-record-btn.recording {
+  background: rgba(239, 68, 68, 0.2) !important;
+}
+
+.ai-devtools-record-btn.recording:hover {
+  background: rgba(239, 68, 68, 0.3) !important;
+}
+
+.ai-devtools-record-btn.recording svg {
+  animation: ai-devtools-record-pulse 1s infinite !important;
+}
+
+@keyframes ai-devtools-record-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+/* Close button styling */
+.ai-devtools-close-btn {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.ai-devtools-close-btn:hover {
+  color: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+}
+
+/* Timer in recording indicator */
+.ai-devtools-timer {
+  font-variant-numeric: tabular-nums !important;
+  font-weight: 500 !important;
+}

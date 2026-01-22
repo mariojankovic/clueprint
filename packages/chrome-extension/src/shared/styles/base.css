@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Black glassmorphism utility classes */
+@layer components {
+  .glass-panel {
+    @apply bg-glass-bg backdrop-blur-glass border border-glass-border rounded-glass shadow-glass;
+    backdrop-filter: blur(32px) saturate(200%);
+    -webkit-backdrop-filter: blur(32px) saturate(200%);
+  }
+
+  .glass-input {
+    @apply w-full px-3 py-2.5 bg-glass-subtle border border-glass-border rounded-glass-sm text-white text-sm outline-none transition-all duration-200;
+  }
+
+  .glass-input:focus {
+    @apply border-glass-border-hover bg-glass-subtle-hover;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-input::placeholder {
+    @apply text-white/35;
+  }
+
+  .glass-btn {
+    @apply inline-flex items-center justify-center gap-2 px-3.5 py-2.5 bg-glass-subtle border border-glass-border rounded-glass-sm text-white text-sm font-medium cursor-pointer transition-all duration-200;
+  }
+
+  .glass-btn:hover {
+    @apply bg-glass-subtle-hover border-glass-border-hover;
+    transform: translateY(-1px);
+  }
+
+  .glass-btn:active {
+    transform: scale(0.98) translateY(0);
+  }
+
+  .glass-btn svg {
+    @apply w-4 h-4 flex-shrink-0;
+  }
+}

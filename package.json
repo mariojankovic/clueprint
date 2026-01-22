@@ -1,0 +1,21 @@
+{
+  "name": "ai-browser-devtools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension + MCP server for AI-assisted browser debugging",
+  "scripts": {
+    "build": "pnpm -r build",
+    "build:extension": "pnpm --filter chrome-extension build",
+    "build:server": "pnpm --filter mcp-server build",
+    "dev:server": "pnpm --filter mcp-server dev",
+    "clean": "pnpm -r clean",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "engines": {
+    "node": ">=18"
+  }
+}

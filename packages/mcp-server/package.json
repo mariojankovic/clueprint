@@ -1,0 +1,41 @@
+{
+  "name": "@anthropic/ai-browser-devtools",
+  "version": "0.1.0",
+  "description": "MCP server for AI Browser DevTools - gives AI coding assistants deep browser visibility",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "ai-browser-devtools": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "mcp",
+    "browser",
+    "devtools",
+    "debugging",
+    "ai",
+    "claude"
+  ],
+  "license": "MIT"
+}
