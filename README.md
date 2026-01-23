@@ -18,21 +18,23 @@
 ## Install
 
 ```bash
-npx clueprint setup
+npx @clueprint/mcp setup
 ```
 
-The setup wizard builds the Chrome extension, configures the MCP server, and connects everything to Claude Code. Follow the on-screen instructions to load the extension.
+The setup wizard installs the Chrome extension, configures the MCP server, and connects everything to Claude Code. Follow the on-screen instructions to load the extension.
 
 ## What it does
 
 Instead of describing what you see or copy-pasting HTML, clueprint lets your AI assistant observe the browser directly:
 
-| Action                      | What gets captured                                                                |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| **Option+Click** an element | Tag, classes, attributes, computed styles, parent context, related console errors |
-| **Cmd+Shift+Drag** a region | Screenshot, all elements within bounds, DOM structure, visual analysis            |
-| **Record a flow**           | Clicks, scrolls, inputs, network requests, console errors, layout shifts          |
-| **Run an audit**            | Console errors, network failures, performance metrics, accessibility issues       |
+| Action | What gets captured |
+| --- | --- |
+| **Cmd+Shift+S** to inspect, then click | Tag, classes, attributes, computed styles, parent context, related console errors |
+| **Cmd+Shift+X** to select region, then drag | Screenshot, all elements within bounds, DOM structure, visual analysis |
+| **Record a flow** (via widget) | Clicks, scrolls, inputs, network requests, console errors, layout shifts |
+| **Activity buffer** (last 30s) | Background capture of interactions, network, and errors without explicit recording |
+| **Run an audit** | Console errors, network failures, performance metrics, accessibility issues |
+| **Snapshot & diff DOM** | Capture DOM state, compare before/after to see what changed |
 
 All data flows through [MCP](https://modelcontextprotocol.io) so any compatible assistant can access it.
 
@@ -51,9 +53,9 @@ All data flows through [MCP](https://modelcontextprotocol.io) so any compatible 
 ## CLI
 
 ```bash
-npx clueprint setup    # build extension + configure MCP
-npx clueprint status   # check installation health
-npx clueprint start    # start MCP server manually
+npx @clueprint/mcp setup    # install extension + configure MCP
+npx @clueprint/mcp status   # check installation health
+npx @clueprint/mcp start    # start MCP server manually
 ```
 
 ## Manual setup
