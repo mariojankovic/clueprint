@@ -295,80 +295,82 @@ export function getDOMStructure(element: Element, depth = 3): string {
 }
 
 /**
- * Get elements within a bounding box
+ * Figma-style element selection within a bounding box.
+ * Traverses the DOM tree and selects elements whose bounding boxes are
+ * fully contained within the selection rect. Stops traversing into children
+ * of fully-contained elements (returns the outermost match).
  */
 export function getElementsInRegion(rect: DOMRect): Element[] {
-  const elements: Element[] = [];
+  const result: Element[] = [];
 
-  // Use elementsFromPoint at multiple positions within the rect
+  // Find the starting scope: elements at sample points to get relevant subtrees
+  const roots = new Set<Element>();
   const points = [
-    [rect.left + 10, rect.top + 10],
-    [rect.right - 10, rect.top + 10],
-    [rect.left + 10, rect.bottom - 10],
-    [rect.right - 10, rect.bottom - 10],
+    [rect.left + 5, rect.top + 5],
+    [rect.right - 5, rect.top + 5],
+    [rect.left + 5, rect.bottom - 5],
+    [rect.right - 5, rect.bottom - 5],
     [rect.left + rect.width / 2, rect.top + rect.height / 2],
   ];
-
-  const seen = new Set<Element>();
 
   for (const [x, y] of points) {
     const els = document.elementsFromPoint(x, y);
     for (const el of els) {
-      if (!seen.has(el) && isElementInRect(el, rect)) {
-        seen.add(el);
-        elements.push(el);
+      if (el === document.body || el === document.documentElement) continue;
+      // Walk up to find a reasonable root to traverse from
+      let root: Element = el;
+      while (root.parentElement && root.parentElement !== document.body) {
+        root = root.parentElement;
       }
+      roots.add(root);
+      break; // just need the deepest stack per point
     }
   }
 
-  // Also find all descendants of the common ancestor
-  const commonAncestor = findCommonAncestor(elements);
-  if (commonAncestor) {
-    const descendants = commonAncestor.querySelectorAll('*');
-    for (const el of descendants) {
-      if (!seen.has(el) && isElementInRect(el, rect)) {
-        seen.add(el);
-        elements.push(el);
-      }
+  // Traverse each root subtree. Returns count of elements selected within.
+  function traverse(el: Element): number {
+    const elRect = el.getBoundingClientRect();
+
+    // Skip elements with no dimensions
+    if (elRect.width === 0 || elRect.height === 0) return 0;
+
+    // Skip elements that don't overlap with selection at all
+    if (elRect.right < rect.left || elRect.left > rect.right ||
+        elRect.bottom < rect.top || elRect.top > rect.bottom) return 0;
+
+    // If fully contained, select it and don't recurse into children
+    if (elRect.left >= rect.left && elRect.right <= rect.right &&
+        elRect.top >= rect.top && elRect.bottom <= rect.bottom) {
+      result.push(el);
+      return 1;
     }
+
+    // Partially overlapping: recurse into children
+    let found = 0;
+    for (const child of el.children) {
+      found += traverse(child);
+    }
+
+    // If nothing inside was selected, select this element as fallback
+    // (like Figma selecting an artboard when nothing inside is fully contained)
+    if (found === 0) {
+      result.push(el);
+      return 1;
+    }
+
+    return found;
   }
 
-  return elements;
-}
-
-/**
- * Check if element is mostly within a rect
- */
-function isElementInRect(element: Element, rect: DOMRect): boolean {
-  const elRect = element.getBoundingClientRect();
-
-  // Element center must be within the rect
-  const centerX = elRect.left + elRect.width / 2;
-  const centerY = elRect.top + elRect.height / 2;
-
-  return (
-    centerX >= rect.left &&
-    centerX <= rect.right &&
-    centerY >= rect.top &&
-    centerY <= rect.bottom
-  );
-}
-
-/**
- * Find common ancestor of elements
- */
-function findCommonAncestor(elements: Element[]): Element | null {
-  if (elements.length === 0) return null;
-  if (elements.length === 1) return elements[0].parentElement;
-
-  let ancestor: Element | null = elements[0];
-
-  while (ancestor) {
-    if (elements.every(el => ancestor!.contains(el))) {
-      return ancestor;
-    }
-    ancestor = ancestor.parentElement;
+  for (const root of roots) {
+    traverse(root);
   }
 
-  return document.body;
+  // Deduplicate (in case roots overlap)
+  const seen = new Set<Element>();
+  return result.filter(el => {
+    if (seen.has(el)) return false;
+    seen.add(el);
+    return true;
+  });
 }
+

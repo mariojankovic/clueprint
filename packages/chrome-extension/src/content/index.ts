@@ -22,6 +22,7 @@ let recordingTimerInterval: number | null = null;
 let floatingWidget: HTMLElement | null = null;
 let widgetStateInterval: number | null = null;
 let lastWidgetRecordingState = false;
+let widgetHiddenForSelection = false;
 
 /**
  * Inject Plus Jakarta Sans font for UI elements
@@ -446,19 +447,32 @@ function createFloatingWidget(): void {
 }
 
 /**
- * Close the floating widget
+ * Close the floating widget with exit animation
  */
 function closeWidget(): void {
+  widgetHiddenForSelection = false;
   if (widgetStateInterval) {
     clearInterval(widgetStateInterval);
     widgetStateInterval = null;
   }
   if (floatingWidget) {
-    const instance = (floatingWidget as any)._instance;
-    if (instance) {
-      unmount(instance);
+    const target = (floatingWidget as any)._target as HTMLElement | undefined;
+    const widgetDiv = target?.querySelector('[class*="widget-enter"], [class*="widget-exit"]') as HTMLElement | null;
+
+    if (widgetDiv) {
+      widgetDiv.classList.remove('widget-enter');
+      widgetDiv.classList.add('widget-exit');
+      const widget = floatingWidget;
+      setTimeout(() => {
+        const instance = (widget as any)._instance;
+        if (instance) unmount(instance);
+        widget.remove();
+      }, 250);
+    } else {
+      const instance = (floatingWidget as any)._instance;
+      if (instance) unmount(instance);
+      floatingWidget.remove();
     }
-    floatingWidget.remove();
     floatingWidget = null;
   }
 }
@@ -480,9 +494,33 @@ function toggleRecording(): void {
 function updateFloatingWidgetState(): void {
   if (!floatingWidget) return;
 
-  // Hide widget during selection modes to prevent self-selection
+  const widgetTarget = (floatingWidget as any)._target as HTMLElement | undefined;
+  const widgetDiv = widgetTarget?.querySelector('[class*="widget-enter"], [class*="widget-exit"]') as HTMLElement | null
+    ?? widgetTarget?.firstElementChild as HTMLElement | null;
+
+  // Animate widget hide/show during selection modes
   const selectionActive = isInspectMode() || isFreeSelectMode();
-  floatingWidget.style.display = selectionActive ? 'none' : 'block';
+  if (selectionActive && !widgetHiddenForSelection) {
+    widgetHiddenForSelection = true;
+    if (widgetDiv) {
+      widgetDiv.classList.remove('widget-enter');
+      widgetDiv.classList.add('widget-exit');
+    }
+    setTimeout(() => {
+      if (floatingWidget) {
+        floatingWidget.style.pointerEvents = 'none';
+        floatingWidget.style.visibility = 'hidden';
+      }
+    }, 250);
+  } else if (!selectionActive && widgetHiddenForSelection) {
+    widgetHiddenForSelection = false;
+    floatingWidget.style.pointerEvents = '';
+    floatingWidget.style.visibility = '';
+    if (widgetDiv) {
+      widgetDiv.classList.remove('widget-exit');
+      widgetDiv.classList.add('widget-enter');
+    }
+  }
 
   // Only remount if recording state actually changed
   if (isRecording === lastWidgetRecordingState) return;

@@ -15,7 +15,7 @@
 </script>
 
 <div
-  class="flex items-center gap-0.5 py-1.5 px-2 bg-black/80 border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4),0_0_0_1px_rgba(255,255,255,0.05)_inset] backdrop-blur-[24px] backdrop-saturate-[180%] font-sans select-none"
+  class="widget-enter flex items-center gap-0.5 py-1.5 px-2 bg-black/80 border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4),0_0_0_1px_rgba(255,255,255,0.05)_inset] backdrop-blur-[24px] backdrop-saturate-[180%] font-sans select-none"
 >
   <div
     data-drag-handle
@@ -63,4 +63,34 @@
 
 <style>
   @import "tailwindcss";
+
+  @keyframes widget-enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes widget-exit {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+  }
+
+  .widget-enter {
+    animation: widget-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  :global(.widget-exit) {
+    animation: widget-exit 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
 </style>

@@ -87,7 +87,7 @@
   <!-- Action buttons row -->
   <div class="flex gap-1.5">
     <button
-      class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-2.5 border border-white/10 rounded-[10px] bg-white/[0.06] text-white/80 cursor-pointer text-[11px] font-medium font-sans transition-all duration-150 hover:bg-white/[0.12] hover:border-white/15 hover:text-white active:scale-[0.97] [&_svg]:w-3.5 [&_svg]:h-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70"
+      class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-2.5 border border-white/10 rounded-[10px] bg-white/[0.06] text-white/80 cursor-pointer text-[11px] font-medium font-sans transition-all duration-400 ease-in-out hover:bg-white/[0.12] hover:border-white/15 hover:text-white active:scale-[0.97] [&_svg]:w-3.5 [&_svg]:h-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70"
       onclick={() => onSelect('tag')}
     >
       <Bookmark size={14} />
@@ -95,7 +95,7 @@
     </button>
 
     <button
-      class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-2.5 border border-white/10 rounded-[10px] bg-white/[0.06] text-white/80 cursor-pointer text-[11px] font-medium font-sans transition-all duration-150 hover:bg-white/[0.12] hover:border-white/15 hover:text-white active:scale-[0.97] [&_svg]:w-3.5 [&_svg]:h-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70"
+      class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-2.5 border border-white/10 rounded-[10px] bg-white/[0.06] text-white/80 cursor-pointer text-[11px] font-medium font-sans transition-all duration-400 ease-in-out hover:bg-white/[0.12] hover:border-white/15 hover:text-white active:scale-[0.97] [&_svg]:w-3.5 [&_svg]:h-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70"
       onclick={() => onSelect('fix')}
     >
       <Wrench size={14} />
@@ -103,7 +103,7 @@
     </button>
 
     <button
-      class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-2.5 border border-white/10 rounded-[10px] bg-white/[0.06] text-white/80 cursor-pointer text-[11px] font-medium font-sans transition-all duration-150 hover:bg-white/[0.12] hover:border-white/15 hover:text-white active:scale-[0.97] [&_svg]:w-3.5 [&_svg]:h-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70"
+      class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-2.5 border border-white/10 rounded-[10px] bg-white/[0.06] text-white/80 cursor-pointer text-[11px] font-medium font-sans transition-all duration-400 ease-in-out hover:bg-white/[0.12] hover:border-white/15 hover:text-white active:scale-[0.97] [&_svg]:w-3.5 [&_svg]:h-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70"
       onclick={() => onSelect('beautify')}
     >
       <Sparkles size={14} />
@@ -111,7 +111,7 @@
     </button>
 
     <button
-      class="inline-flex items-center justify-center w-8 py-2 border border-white/[0.06] rounded-[10px] bg-transparent text-white/40 cursor-pointer transition-all duration-150 hover:bg-white/[0.08] hover:text-white/70 active:scale-[0.97]"
+      class="inline-flex items-center justify-center w-8 py-2 border border-white/[0.06] rounded-[10px] bg-transparent text-white/40 cursor-pointer transition-all duration-400 ease-in-out hover:bg-white/[0.08] hover:text-white/70 active:scale-[0.97]"
       onclick={() => onClose()}
     >
       <X size={14} />

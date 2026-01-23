@@ -22,6 +22,8 @@ let startX = 0;
 let startY = 0;
 let selectionOverlay: HTMLElement | null = null;
 let pickerCleanup: (() => void) | null = null; // Cleanup function for the current picker
+let highlightOverlays = new Map<Element, HTMLElement>();
+let highlightRAF: number | null = null;
 
 /**
  * Create selection rectangle overlay
@@ -83,6 +85,9 @@ function handleMouseDown(event: MouseEvent): void {
   event.preventDefault();
   event.stopPropagation();
 
+  // Clear highlights from any previous selection
+  clearHighlights();
+
   isDrawing = true;
   startX = event.clientX;
   startY = event.clientY;
@@ -103,6 +108,15 @@ function handleMouseMove(event: MouseEvent): void {
 
   event.preventDefault();
   updateSelectionRect(event.clientX, event.clientY);
+
+  // Throttle highlight updates with rAF
+  const endX = event.clientX;
+  const endY = event.clientY;
+  if (highlightRAF) cancelAnimationFrame(highlightRAF);
+  highlightRAF = requestAnimationFrame(() => {
+    updateHighlights(endX, endY);
+    highlightRAF = null;
+  });
 }
 
 /**
@@ -116,8 +130,15 @@ function handleMouseUp(event: MouseEvent): void {
 
   isDrawing = false;
 
+  // Cancel pending rAF and do a final synchronous highlight update
+  if (highlightRAF) {
+    cancelAnimationFrame(highlightRAF);
+    highlightRAF = null;
+  }
+
   const endX = event.clientX;
   const endY = event.clientY;
+  updateHighlights(endX, endY);
 
   // Calculate final rect
   const rect: ElementRect = {
@@ -154,6 +175,81 @@ function removeSelection(): void {
   if (selectionOverlay) {
     selectionOverlay.remove();
     selectionOverlay = null;
+  }
+}
+
+/**
+ * Create a highlight overlay positioned over a target element
+ */
+function createHighlightOverlay(el: Element): HTMLElement {
+  const rect = el.getBoundingClientRect();
+  const overlay = document.createElement('div');
+  overlay.className = 'ai-devtools-region-highlight';
+  overlay.style.cssText = `
+    position: fixed;
+    pointer-events: none;
+    border: 2px solid #0066ff;
+    background: rgba(0, 102, 255, 0.08);
+    border-radius: 4px;
+    z-index: 2147483647;
+    top: ${rect.top}px;
+    left: ${rect.left}px;
+    width: ${rect.width}px;
+    height: ${rect.height}px;
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+/**
+ * Remove a highlight overlay for an element
+ */
+function removeHighlight(el: Element): void {
+  const overlay = highlightOverlays.get(el);
+  if (overlay) {
+    overlay.remove();
+    highlightOverlays.delete(el);
+  }
+}
+
+/**
+ * Clear all highlight overlays
+ */
+function clearHighlights(): void {
+  for (const [, overlay] of highlightOverlays) {
+    overlay.remove();
+  }
+  highlightOverlays.clear();
+}
+
+/**
+ * Update highlights based on the current selection rect
+ */
+function updateHighlights(endX: number, endY: number): void {
+  const left = Math.min(startX, endX);
+  const top = Math.min(startY, endY);
+  const width = Math.abs(endX - startX);
+  const height = Math.abs(endY - startY);
+
+  if (width < 20 || height < 20) return;
+
+  const domRect = new DOMRect(left, top, width, height);
+  const elements = getElementsInRegion(domRect);
+  const newSet = new Set<Element>(elements);
+
+  // Remove overlays for elements no longer in rect
+  for (const el of highlightOverlays.keys()) {
+    if (!newSet.has(el)) {
+      removeHighlight(el);
+    }
+  }
+
+  // Add overlays for newly included elements
+  for (const el of newSet) {
+    if (!highlightOverlays.has(el)) {
+      const overlay = createHighlightOverlay(el);
+      highlightOverlays.set(el, overlay);
+    }
   }
 }
 
@@ -486,6 +582,15 @@ export function deactivateFreeSelectDrag(): void {
   isDrawing = false;
   document.body.style.cursor = '';
   document.body.style.userSelect = '';
+
+  // Cancel any pending highlight update
+  if (highlightRAF) {
+    cancelAnimationFrame(highlightRAF);
+    highlightRAF = null;
+  }
+
+  // Clear element highlights
+  clearHighlights();
 
   // Properly cleanup picker (unmounts Svelte component and removes DOM)
   if (pickerCleanup) {
