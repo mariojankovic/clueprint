@@ -54,9 +54,8 @@ const packageJson = {
   description: 'Browser visibility for AI assistants — MCP server + Chrome extension',
   type: 'module',
   bin: {
-    mcp: './server/index.cjs',
+    mcp: './cli/index.js',
     clueprint: './cli/index.js',
-    'clueprint-mcp': './server/index.cjs'
   },
   files: ['cli/', 'server/', 'extension/', 'assets/'],
   dependencies: {
