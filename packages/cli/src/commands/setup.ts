@@ -238,7 +238,7 @@ function runCommand(command: string, args: string[], options: { cwd: string }): 
 
 async function configureMcp(mcpServerPath: string): Promise<boolean> {
   const claudeConfigDir = join(homedir(), '.claude');
-  const claudeSettingsPath = join(claudeConfigDir, 'claude_desktop_config.json');
+  const claudeSettingsPath = join(claudeConfigDir, 'mcp.json');
 
   // Check if Claude Code config exists
   if (!existsSync(claudeConfigDir)) {

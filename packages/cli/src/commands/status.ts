@@ -92,7 +92,7 @@ export async function status(): Promise<void> {
   }
 
   // Check 5: Claude Code MCP configuration
-  const claudeConfigPath = join(homedir(), '.claude', 'claude_desktop_config.json');
+  const claudeConfigPath = join(homedir(), '.claude', 'mcp.json');
 
   if (existsSync(claudeConfigPath)) {
     try {
@@ -131,7 +131,7 @@ export async function status(): Promise<void> {
         name: 'Claude Code MCP',
         status: 'warning',
         message: 'Config parse error',
-        hint: 'Check ~/.claude/claude_desktop_config.json',
+        hint: 'Check ~/.claude/mcp.json',
       });
     }
   } else {
