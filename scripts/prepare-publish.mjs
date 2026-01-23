@@ -51,15 +51,12 @@ const packageJson = {
   },
   files: ['cli/', 'server/', 'extension/', 'assets/'],
   dependencies: {
-    // CLI dependencies
+    // CLI dependencies (server is self-contained via esbuild bundle)
     '@clack/prompts': '^0.10.0',
     chalk: '^5.3.0',
     commander: '^12.1.0',
     'gradient-string': '^3.0.0',
     picocolors: '^1.1.1',
-    // MCP server dependencies
-    '@modelcontextprotocol/sdk': '^1.0.0',
-    ws: '^8.16.0'
   },
   engines: { node: '>=18' },
   keywords: ['mcp', 'browser', 'devtools', 'chrome', 'claude', 'ai', 'debugging'],
