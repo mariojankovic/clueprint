@@ -20,6 +20,7 @@ import {
 const state: ExtensionState = {
   isActive: false,
   isRecording: false,
+  isBuffering: false,
   currentSelection: null,
   currentRecording: null,
   snapshots: new Map(),
@@ -32,10 +33,16 @@ const state: ExtensionState = {
 let recordingStartTime: number | null = null;
 let recordingEvents: FlowEvent[] = [];
 
+// Ring buffer state (background capture)
+let ringBuffer: FlowEvent[] = [];
+let bufferPruneInterval: ReturnType<typeof setInterval> | null = null;
+const BUFFER_MAX_AGE_MS = 30_000;
+
 // WebSocket connection to MCP server
 let ws: WebSocket | null = null;
 const WS_PORT = 7007;
 const WS_RECONNECT_DELAY = 3000;
+const WS_KEEPALIVE_ALARM = 'ws-keepalive';
 
 // Settings
 let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
@@ -48,6 +55,13 @@ function initialize(): void {
 
   // Load settings from storage
   loadSettings();
+
+  // Restore buffering state
+  chrome.storage.local.get('isBuffering').then(({ isBuffering: wasBuffering }) => {
+    if (wasBuffering) {
+      startBuffering();
+    }
+  });
 
   // Connect to MCP server
   connectToMCPServer();
@@ -63,6 +77,17 @@ function initialize(): void {
 
   // Listen for extension icon click
   chrome.action.onClicked.addListener(handleActionClick);
+
+  // Set up periodic keep-alive alarm for WebSocket reconnection
+  // This persists across service worker restarts unlike setTimeout
+  chrome.alarms.create(WS_KEEPALIVE_ALARM, { periodInMinutes: 0.5 }); // 30 seconds (Chrome minimum)
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === WS_KEEPALIVE_ALARM) {
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        connectToMCPServer();
+      }
+    }
+  });
 }
 
 /**
@@ -83,7 +108,7 @@ async function loadSettings(): Promise<void> {
  * Connect to MCP server via WebSocket
  */
 function connectToMCPServer(): void {
-  if (ws?.readyState === WebSocket.OPEN) return;
+  if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
 
   try {
     ws = new WebSocket(`ws://localhost:${settings.serverPort}`);
@@ -97,9 +122,10 @@ function connectToMCPServer(): void {
     ws.onclose = () => {
       console.log('[AI DevTools] Disconnected from MCP server');
       state.mcpConnected = false;
+      ws = null;
       broadcastStatus();
 
-      // Attempt to reconnect
+      // Attempt immediate reconnect (backup to alarm-based reconnection)
       setTimeout(connectToMCPServer, WS_RECONNECT_DELAY);
     };
 
@@ -192,6 +218,14 @@ function handleMCPMessage(message: { type: string; id?: string; payload?: unknow
       });
       break;
 
+    case 'GET_RECENT_ACTIVITY':
+      sendToMCP({
+        type: 'RECENT_ACTIVITY_RESPONSE',
+        id: message.id,
+        payload: getBufferAsRecording(),
+      });
+      break;
+
     case 'PING':
       sendToMCP({ type: 'PONG', id: message.id });
       break;
@@ -219,6 +253,8 @@ function handleMessage(
           data: { selector: (message.payload as InspectCapture).element.selector },
         });
       }
+
+      addToBuffer('element_select', { selector: (message.payload as InspectCapture).element.selector });
 
       sendResponse({ success: true });
       break;
@@ -255,6 +291,11 @@ function handleMessage(
         });
       }
 
+      addToBuffer(`console_${consoleEntry.type}` as FlowEvent['type'], {
+        message: consoleEntry.message,
+        source: consoleEntry.source,
+      });
+
       sendResponse({ success: true });
       break;
 
@@ -284,6 +325,16 @@ function handleMessage(
         });
       }
 
+      addToBuffer(
+        (networkEntry.status && networkEntry.status >= 400 ? 'network_error' : 'network_response') as FlowEvent['type'],
+        {
+          url: networkEntry.url,
+          method: networkEntry.method,
+          status: networkEntry.status,
+          statusText: networkEntry.statusText,
+        }
+      );
+
       sendResponse({ success: true });
       break;
 
@@ -296,6 +347,10 @@ function handleMessage(
           type: interaction.type as FlowEvent['type'],
           data: interaction.data,
         });
+      }
+      {
+        const interaction = message.payload as { type: string; data: Record<string, unknown> };
+        addToBuffer(interaction.type as FlowEvent['type'], interaction.data);
       }
       sendResponse({ success: true });
       break;
@@ -310,6 +365,7 @@ function handleMessage(
       sendResponse({
         isActive: state.isActive,
         isRecording: state.isRecording,
+        isBuffering: state.isBuffering,
         hasSelection: state.currentSelection !== null,
         mcpConnected: state.mcpConnected,
       });
@@ -329,6 +385,24 @@ function handleMessage(
     case 'CONTENT_READY':
       state.isActive = true;
       sendResponse({ success: true });
+      break;
+
+    case 'TOGGLE_BUFFER':
+      if (state.isBuffering) {
+        stopBuffering();
+      } else {
+        startBuffering();
+      }
+      sendResponse({ success: true, isBuffering: state.isBuffering });
+      break;
+
+    case 'SEND_BUFFER':
+      const bufferRecording = getBufferAsRecording();
+      if (bufferRecording) {
+        state.currentRecording = bufferRecording;
+        sendToMCP({ type: 'BUFFER_RECORDING', payload: bufferRecording });
+      }
+      sendResponse({ success: true, recording: bufferRecording });
       break;
 
     default:
@@ -389,6 +463,11 @@ function handleTabUpdated(
         data: { url: changeInfo.url },
       });
     }
+
+    addToBuffer(
+      (changeInfo.url ? 'navigation' : 'refresh') as FlowEvent['type'],
+      { url: changeInfo.url }
+    );
   }
 }
 
@@ -482,6 +561,116 @@ function stopFlowRecording(): FlowRecording | null {
   broadcastToAllTabs({ type: 'RECORDING_STOPPED' });
 
   return recording;
+}
+
+// =============================================================================
+// Ring Buffer (Background Capture)
+// =============================================================================
+
+/**
+ * Start background buffering
+ */
+function startBuffering(): void {
+  state.isBuffering = true;
+  ringBuffer = [];
+
+  // Prune stale events every 5 seconds
+  bufferPruneInterval = setInterval(pruneBuffer, 5000);
+
+  // Persist toggle state
+  chrome.storage.local.set({ isBuffering: true });
+
+  broadcastStatus();
+}
+
+/**
+ * Stop background buffering
+ */
+function stopBuffering(): void {
+  state.isBuffering = false;
+  ringBuffer = [];
+
+  if (bufferPruneInterval) {
+    clearInterval(bufferPruneInterval);
+    bufferPruneInterval = null;
+  }
+
+  chrome.storage.local.set({ isBuffering: false });
+
+  broadcastStatus();
+}
+
+/**
+ * Prune events older than 30 seconds from ring buffer
+ */
+function pruneBuffer(): void {
+  const cutoff = Date.now() - BUFFER_MAX_AGE_MS;
+  const firstValidIndex = ringBuffer.findIndex(e => e.time >= cutoff);
+  if (firstValidIndex > 0) {
+    ringBuffer = ringBuffer.slice(firstValidIndex);
+  } else if (firstValidIndex === -1 && ringBuffer.length > 0) {
+    ringBuffer = [];
+  }
+}
+
+/**
+ * Add event to ring buffer (if buffering is active)
+ */
+function addToBuffer(type: FlowEvent['type'], data: Record<string, unknown>): void {
+  if (!state.isBuffering) return;
+
+  ringBuffer.push({
+    time: Date.now(), // absolute timestamp
+    type,
+    data,
+  });
+
+  // Safety valve for high-frequency events
+  if (ringBuffer.length > 5000) {
+    pruneBuffer();
+  }
+}
+
+/**
+ * Get buffer contents as a FlowRecording
+ */
+function getBufferAsRecording(): FlowRecording | null {
+  pruneBuffer();
+
+  if (ringBuffer.length === 0) return null;
+
+  const oldest = ringBuffer[0].time;
+  const newest = ringBuffer[ringBuffer.length - 1].time;
+  const duration = newest - oldest;
+
+  // Convert absolute timestamps to relative
+  const events: FlowEvent[] = ringBuffer.map(e => ({
+    ...e,
+    time: e.time - oldest,
+  }));
+
+  const summary = {
+    totalEvents: events.length,
+    clicks: events.filter(e => e.type === 'click').length,
+    inputs: events.filter(e => e.type === 'input').length,
+    scrolls: events.filter(e => e.type === 'scroll').length,
+    navigations: events.filter(e => e.type === 'navigation' || e.type === 'refresh').length,
+    networkRequests: events.filter(e => e.type === 'network_request' || e.type === 'network_response').length,
+    networkErrors: events.filter(e => e.type === 'network_error').length,
+    consoleErrors: events.filter(e => e.type === 'console_error').length,
+    layoutShifts: events.filter(e => e.type === 'layout_shift').length,
+  };
+
+  const diagnosis = generateFlowDiagnosis(events, duration);
+
+  return {
+    mode: 'flow',
+    duration,
+    startTime: oldest,
+    events,
+    summary,
+    diagnosis,
+  };
 }
 
 /**
@@ -719,6 +908,7 @@ function broadcastStatus(): void {
     type: 'STATUS_UPDATE',
     isActive: state.isActive,
     isRecording: state.isRecording,
+    isBuffering: state.isBuffering,
     mcpConnected: state.mcpConnected,
   };
 

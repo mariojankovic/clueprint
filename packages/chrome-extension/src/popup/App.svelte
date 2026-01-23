@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { MousePointerClick, SquareDashedMousePointer, Activity, Clapperboard, Layers, Eye, EyeOff } from 'lucide-svelte';
+  import { MousePointerClick, SquareDashedMousePointer, Activity, Clapperboard, Layers, Eye, EyeOff, Circle } from 'lucide-svelte';
 
   // State
   let isActive = $state(false);
   let isRecording = $state(false);
+  let isBuffering = $state(false);
   let mcpConnected = $state(false);
   let widgetVisible = $state(true);
   let isMac = $state(true);
@@ -16,6 +17,7 @@
       if (response) {
         isActive = response.isActive;
         isRecording = response.isRecording;
+        isBuffering = response.isBuffering;
         mcpConnected = response.mcpConnected;
       }
     } catch (error) {
@@ -46,6 +48,14 @@
     }
   }
 
+  // Toggle background capture
+  async function toggleBuffer() {
+    const response = await chrome.runtime.sendMessage({ type: 'TOGGLE_BUFFER' });
+    if (response) {
+      isBuffering = response.isBuffering;
+    }
+  }
+
   // Modifier key display
   function mod() {
     return isMac ? '⌘' : 'Ctrl+';
@@ -69,6 +79,7 @@
       if (message.type === 'STATUS_UPDATE') {
         isActive = message.isActive;
         isRecording = message.isRecording;
+        isBuffering = message.isBuffering;
         mcpConnected = message.mcpConnected;
       }
     };
@@ -82,7 +93,7 @@
   <!-- Header -->
   <header class="text-center mb-5">
     <h1 class="text-[28px] font-normal tracking-tight text-white mb-1" style="font-family: 'Fraunces', serif;">clueprint</h1>
-    <p class="text-xs font-normal text-white/40 tracking-wide">browser visibility for AI</p>
+    <p class="text-xs font-normal text-white/40 tracking-wide">From clueless to flawless</p>
   </header>
 
   <!-- Status -->
@@ -154,7 +165,7 @@
     </div>
   </div>
 
-  <!-- Widget Toggle -->
+  <!-- Toggles -->
   <div class="pt-3 border-t border-white/[0.06]">
     <button
       class="flex items-center justify-between w-full py-2.5 px-3 rounded-lg bg-transparent border-none text-white cursor-pointer transition-colors hover:bg-white/[0.05]"
@@ -169,6 +180,17 @@
           {/if}
         </span>
         <span class="text-[13px] text-white/70">{widgetVisible ? 'Hide' : 'Show'} floating toolbar</span>
+      </div>
+    </button>
+    <button
+      class="flex items-center justify-between w-full py-2.5 px-3 rounded-lg bg-transparent border-none text-white cursor-pointer transition-colors hover:bg-white/[0.05]"
+      onclick={toggleBuffer}
+    >
+      <div class="flex items-center gap-2.5">
+        <span class="flex items-center justify-center w-5 text-white/40">
+          <Circle size={12} fill={isBuffering ? '#4ade80' : 'none'} strokeWidth={1.5} />
+        </span>
+        <span class="text-[13px] text-white/70">{isBuffering ? 'Disable' : 'Enable'} background capture</span>
       </div>
     </button>
   </div>

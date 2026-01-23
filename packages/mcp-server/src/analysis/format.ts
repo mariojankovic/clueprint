@@ -276,10 +276,41 @@ export function formatFlowReport(recording: FlowRecording): string {
   const inputEvents = recording.events.filter(e => e.type === 'input');
   if (inputEvents.length > 0) {
     lines.push('INPUT EVENTS:');
-    for (const input of inputEvents.slice(0, 5)) {
+    for (const input of inputEvents.slice(0, 10)) {
       const d = input.data as Record<string, unknown>;
       const time = (input.time / 1000).toFixed(1);
-      lines.push(`  ${time}s ${d.inputType || 'text'} "${d.label || d.selector}" (${d.valueLength} chars)`);
+      const value = d.value != null ? `"${String(d.value).slice(0, 60)}"` : `(${d.valueLength} chars)`;
+      lines.push(`  ${time}s ${d.inputType || 'text'} "${d.label || d.selector}" → ${value}`);
+    }
+    if (inputEvents.length > 10) {
+      lines.push(`  ... ${inputEvents.length - 10} more inputs`);
+    }
+    lines.push('');
+  }
+
+  // Clipboard events
+  const clipboardEvents = recording.events.filter(e => e.type === 'clipboard');
+  if (clipboardEvents.length > 0) {
+    lines.push('CLIPBOARD EVENTS:');
+    for (const clip of clipboardEvents) {
+      const d = clip.data as Record<string, unknown>;
+      const time = (clip.time / 1000).toFixed(1);
+      const action = String(d.action || 'copy').toUpperCase();
+      const text = d.text ? `"${String(d.text).slice(0, 80)}"` : '(empty)';
+      lines.push(`  ${time}s ${action} ${text}`);
+    }
+    lines.push('');
+  }
+
+  // Selection events
+  const selectionEvents = recording.events.filter(e => e.type === 'selection');
+  if (selectionEvents.length > 0) {
+    lines.push('TEXT SELECTIONS:');
+    for (const sel of selectionEvents.slice(0, 5)) {
+      const d = sel.data as Record<string, unknown>;
+      const time = (sel.time / 1000).toFixed(1);
+      const text = d.text ? `"${String(d.text).slice(0, 80)}"` : '';
+      lines.push(`  ${time}s selected ${text} in ${d.selector || 'element'}`);
     }
     lines.push('');
   }
@@ -373,8 +404,9 @@ function getEventDescriptionVerbose(event: { type: string; data: Record<string, 
     case 'input': {
       const type = data.inputType || 'text';
       const label = data.label || data.selector || 'field';
-      const len = data.valueLength || 0;
-      return `INPUT [${type}] "${label}" typed ${len} chars`;
+      const value = data.value != null ? String(data.value) : '';
+      const display = value ? `value="${value.slice(0, 80)}"` : `${data.valueLength || 0} chars`;
+      return `INPUT [${type}] "${label}" ${display}`;
     }
     case 'form_submit': {
       const method = data.method || 'POST';
@@ -421,6 +453,26 @@ function getEventDescriptionVerbose(event: { type: string; data: Record<string, 
     }
     case 'element_select':
       return `SELECTED: ${data.selector}`;
+    case 'clipboard': {
+      const action = String(data.action || 'copy').toUpperCase();
+      const text = data.text ? `"${String(data.text).slice(0, 60)}"` : '(empty)';
+      return `${action} ${text} on ${data.selector || 'element'}`;
+    }
+    case 'selection': {
+      const text = data.text ? `"${String(data.text).slice(0, 60)}"` : '';
+      return `SELECT TEXT ${text} in ${data.selector || 'element'}`;
+    }
+    case 'focus': {
+      const role = data.role ? `[${data.role}]` : '';
+      const label = data.label || data.selector || 'field';
+      return `FOCUS ${role} "${label}"`;
+    }
+    case 'blur': {
+      const role = data.role ? `[${data.role}]` : '';
+      const label = data.label || data.selector || 'field';
+      const finalValue = data.finalValue ? ` finalValue="${String(data.finalValue).slice(0, 60)}"` : '';
+      return `BLUR ${role} "${label}"${finalValue}`;
+    }
     default:
       return `${event.type.toUpperCase()} ${JSON.stringify(data).slice(0, 80)}`;
   }
@@ -549,6 +601,10 @@ function getEventEmoji(type: string): string {
     form_submit: '📋',
     keypress: '⌨️',
     mouse_move: '🔍',
+    clipboard: '📋',
+    selection: '🔤',
+    focus: '🎯',
+    blur: '💨',
   };
   return emojis[type] || '•';
 }

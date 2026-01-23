@@ -29,7 +29,9 @@ const DEFAULT_PORT = 7007;
 let currentSelection: InspectCapture | FreeSelectCapture | null = null;
 let currentRecording: FlowRecording | null = null;
 let isRecording = false;
-let connectedClient: WebSocket | null = null;
+let connectedClient: WebSocket | null = null; // Extension connection (server mode)
+let relayClient: WebSocket | null = null; // Connection to primary server (relay mode)
+let relayClients: Set<WebSocket> = new Set(); // Relay MCP clients connected to this server
 
 // Pending requests waiting for response
 const pendingRequests = new Map<string, {
@@ -52,8 +54,15 @@ function generateRequestId(): string {
  */
 async function sendRequest<T>(type: string, payload?: unknown, timeoutMs = 10000): Promise<T> {
   return new Promise((resolve, reject) => {
-    if (!connectedClient || connectedClient.readyState !== WebSocket.OPEN) {
-      reject(new Error('Extension not connected'));
+    // Determine which connection to use: direct extension or relay
+    const target = (connectedClient && connectedClient.readyState === WebSocket.OPEN)
+      ? connectedClient
+      : (relayClient && relayClient.readyState === WebSocket.OPEN)
+        ? relayClient
+        : null;
+
+    if (!target) {
+      reject(new Error('Extension not connected. The browser extension WebSocket may have disconnected. Try reloading the extension or refreshing the page.'));
       return;
     }
 
@@ -65,7 +74,7 @@ async function sendRequest<T>(type: string, payload?: unknown, timeoutMs = 10000
 
     pendingRequests.set(id, { resolve: resolve as (value: unknown) => void, reject, timeout });
 
-    connectedClient.send(JSON.stringify({ type, id, payload }));
+    target.send(JSON.stringify({ type, id, payload }));
   });
 }
 
@@ -112,6 +121,12 @@ function handleMessage(data: string): void {
         console.error('[MCP] Recording stopped:', currentRecording?.summary.totalEvents, 'events');
         break;
 
+      case 'BUFFER_RECORDING':
+        currentRecording = message.payload as FlowRecording;
+        saveRecording(currentRecording);
+        console.error('[MCP] Buffer recording received:', currentRecording?.summary.totalEvents, 'events');
+        break;
+
       case 'PONG':
         // Connection alive
         break;
@@ -125,6 +140,73 @@ function handleMessage(data: string): void {
 }
 
 /**
+ * Connect as a relay client to an existing WebSocket server
+ */
+function connectAsRelay(port: number): void {
+  if (relayClient && relayClient.readyState === WebSocket.OPEN) return;
+
+  try {
+    relayClient = new WebSocket(`ws://localhost:${port}`);
+
+    relayClient.on('open', () => {
+      console.error('[MCP] Connected as relay client to primary server');
+      // Identify ourselves as a relay client
+      relayClient!.send(JSON.stringify({ type: 'MCP_RELAY_IDENTIFY' }));
+    });
+
+    relayClient.on('message', (data) => {
+      handleMessage(data.toString());
+    });
+
+    relayClient.on('close', () => {
+      console.error('[MCP] Relay connection closed, reconnecting...');
+      relayClient = null;
+      setTimeout(() => connectAsRelay(port), 3000);
+    });
+
+    relayClient.on('error', () => {
+      // Error will be followed by close event
+    });
+  } catch (error) {
+    console.error('[MCP] Failed to connect as relay:', error);
+    setTimeout(() => connectAsRelay(port), 3000);
+  }
+}
+
+/**
+ * Handle a message from a relay client (on the server side)
+ * Forwards requests to the extension and relays responses back
+ */
+function handleRelayRequest(relayWs: WebSocket, message: { type: string; id?: string; payload?: unknown }): void {
+  if (!message.id || !connectedClient || connectedClient.readyState !== WebSocket.OPEN) {
+    // Can't forward without an id or without extension connection
+    if (message.id) {
+      relayWs.send(JSON.stringify({ id: message.id, error: 'Extension not connected to primary server' }));
+    }
+    return;
+  }
+
+  // Forward to extension with a mapped ID
+  const relayId = generateRequestId();
+  const timeout = setTimeout(() => {
+    pendingRequests.delete(relayId);
+    relayWs.send(JSON.stringify({ id: message.id, error: 'Request timed out' }));
+  }, 10000);
+
+  pendingRequests.set(relayId, {
+    resolve: (value: unknown) => {
+      relayWs.send(JSON.stringify({ id: message.id, payload: value }));
+    },
+    reject: (error: Error) => {
+      relayWs.send(JSON.stringify({ id: message.id, error: error.message }));
+    },
+    timeout,
+  });
+
+  connectedClient.send(JSON.stringify({ type: message.type, id: relayId, payload: message.payload }));
+}
+
+/**
  * Create and start WebSocket server
  */
 export function createWebSocketServer(port = DEFAULT_PORT): Promise<WebSocketServer | null> {
@@ -134,7 +216,8 @@ export function createWebSocketServer(port = DEFAULT_PORT): Promise<WebSocketSer
     // Handle port-in-use error before trying to bind
     httpServer.on('error', (error: NodeJS.ErrnoException) => {
       if (error.code === 'EADDRINUSE') {
-        console.error(`[MCP] Port ${port} already in use - MCP server will run without WebSocket (extension connection not available)`);
+        console.error(`[MCP] Port ${port} already in use - connecting as relay client`);
+        connectAsRelay(port);
         resolve(null);
       } else {
         console.error('[MCP] HTTP server error:', error);
@@ -148,17 +231,49 @@ export function createWebSocketServer(port = DEFAULT_PORT): Promise<WebSocketSer
       console.error(`[MCP] WebSocket server listening on port ${port}`);
 
       wss.on('connection', (ws) => {
-        console.error('[MCP] Extension connected');
-        connectedClient = ws;
-        saveConnectionState(true);
+        // Default to extension — relay clients will re-identify themselves immediately
+        // Only replace if no existing open extension connection
+        if (!connectedClient || connectedClient.readyState !== WebSocket.OPEN) {
+          console.error('[MCP] Extension connected');
+          connectedClient = ws;
+          saveConnectionState(true);
+        }
 
         ws.on('message', (data) => {
-          handleMessage(data.toString());
+          const msgStr = data.toString();
+          try {
+            const msg = JSON.parse(msgStr);
+
+            // Check if this client is identifying as a relay
+            if (msg.type === 'MCP_RELAY_IDENTIFY') {
+              console.error('[MCP] Client re-identified as relay');
+              relayClients.add(ws);
+              // Unset as extension if it was set
+              if (connectedClient === ws) {
+                connectedClient = null;
+              }
+              return;
+            }
+
+            // If it's a known relay client, forward its requests to extension
+            if (relayClients.has(ws)) {
+              handleRelayRequest(ws, msg);
+              return;
+            }
+
+            // Extension message
+            handleMessage(msgStr);
+          } catch {
+            handleMessage(msgStr);
+          }
         });
 
         ws.on('close', () => {
-          console.error('[MCP] Extension disconnected');
-          if (connectedClient === ws) {
+          if (relayClients.has(ws)) {
+            console.error('[MCP] Relay client disconnected');
+            relayClients.delete(ws);
+          } else if (connectedClient === ws) {
+            console.error('[MCP] Extension disconnected');
             connectedClient = null;
             saveConnectionState(false);
           }
@@ -170,7 +285,7 @@ export function createWebSocketServer(port = DEFAULT_PORT): Promise<WebSocketSer
 
         // Send ping periodically and refresh connection state
         const pingInterval = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
+          if (ws.readyState === WebSocket.OPEN && connectedClient === ws) {
             ws.send(JSON.stringify({ type: 'PING' }));
             saveConnectionState(true); // Refresh timestamp
           }
@@ -189,11 +304,15 @@ export function createWebSocketServer(port = DEFAULT_PORT): Promise<WebSocketSer
  * Checks both in-memory connection and shared state file
  */
 export function isExtensionConnected(): boolean {
-  // First check in-memory connection (for the process with WebSocket server)
+  // Check direct extension connection (primary server mode)
   if (connectedClient !== null && connectedClient.readyState === WebSocket.OPEN) {
     return true;
   }
-  // Fall back to shared state (for MCP instances spawned by Claude Code)
+  // Check relay connection (secondary process mode)
+  if (relayClient !== null && relayClient.readyState === WebSocket.OPEN) {
+    return true;
+  }
+  // Fall back to shared state file
   return loadConnectionState();
 }
 
@@ -266,6 +385,13 @@ export async function stopRecording(): Promise<FlowRecording> {
   saveRecordingState(false); // Save to shared state
   saveRecording(recording); // Save recording
   return recording;
+}
+
+/**
+ * Request recent activity buffer from extension
+ */
+export async function requestRecentActivity(): Promise<FlowRecording | null> {
+  return sendRequest<FlowRecording | null>('GET_RECENT_ACTIVITY');
 }
 
 /**

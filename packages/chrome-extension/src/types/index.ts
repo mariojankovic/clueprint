@@ -23,7 +23,11 @@ export type EventType =
   | 'element_select'
   | 'form_submit'
   | 'keypress'
-  | 'mouse_move';
+  | 'mouse_move'
+  | 'clipboard'
+  | 'selection'
+  | 'focus'
+  | 'blur';
 
 // =============================================================================
 // Element Capture Types
@@ -407,6 +411,9 @@ export type MessageType =
   | 'PING'
   | 'RECORDING_STARTED'
   | 'RECORDING_STOPPED'
+  | 'TOGGLE_BUFFER'
+  | 'SEND_BUFFER'
+  | 'GET_RECENT_ACTIVITY'
   | 'STATUS_UPDATE';
 
 export interface ExtensionMessage {
@@ -421,6 +428,7 @@ export interface ExtensionMessage {
 export interface ExtensionState {
   isActive: boolean;
   isRecording: boolean;
+  isBuffering: boolean;
   currentSelection: InspectCapture | FreeSelectCapture | null;
   currentRecording: FlowRecording | null;
   snapshots: Map<string, DOMSnapshot>;

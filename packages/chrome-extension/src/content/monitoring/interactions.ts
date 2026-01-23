@@ -150,7 +150,7 @@ function handleScroll(): void {
 }
 
 /**
- * Handle input events (captures what field was interacted with, not the actual value for privacy)
+ * Handle input events (captures field value for debugging context)
  */
 function handleInput(event: Event): void {
   const target = event.target as Element;
@@ -165,22 +165,25 @@ function handleInput(event: Event): void {
   const role = getElementRole(target);
   const label = getElementText(target);
 
-  // Get input type but NOT the value (privacy)
   const inputType = target instanceof HTMLInputElement ? target.type : 'text';
-  const hasValue = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
-    ? target.value.length > 0
-    : false;
+
+  // Capture actual value for debugging (mask sensitive fields)
+  let value = '';
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    if (inputType === 'password') {
+      value = '*'.repeat(target.value.length);
+    } else {
+      value = target.value;
+    }
+  }
 
   sendInteractionEvent('input', {
     selector,
     role,
     label,
     inputType,
-    hasValue,
-    // Only include value length, not actual value (privacy)
-    valueLength: target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
-      ? target.value.length
-      : 0,
+    value,
+    valueLength: value.length,
   });
 }
 
@@ -263,6 +266,147 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 /**
+ * Handle clipboard events (copy, cut, paste)
+ */
+function handleClipboard(event: ClipboardEvent): void {
+  const target = event.target as Element;
+  if (!target) return;
+
+  // Skip our own UI
+  if (target.closest('#ai-devtools-floating-widget, #ai-devtools-recording-indicator')) {
+    return;
+  }
+
+  const action = event.type as 'copy' | 'cut' | 'paste';
+  const selector = getSelector(target);
+
+  let text = '';
+  if (action === 'paste') {
+    text = event.clipboardData?.getData('text/plain')?.slice(0, 200) || '';
+  } else {
+    // For copy/cut, get the current selection
+    text = document.getSelection()?.toString()?.slice(0, 200) || '';
+  }
+
+  sendInteractionEvent('clipboard', {
+    action,
+    selector,
+    text,
+    textLength: text.length,
+  });
+}
+
+/**
+ * Handle text selection changes
+ */
+let selectionTimeout: ReturnType<typeof setTimeout> | null = null;
+function handleSelectionChange(): void {
+  // Debounce selection events since they fire rapidly during drag-select
+  if (selectionTimeout) clearTimeout(selectionTimeout);
+  selectionTimeout = setTimeout(() => {
+    const selection = document.getSelection();
+    if (!selection || selection.isCollapsed) return;
+
+    const text = selection.toString().slice(0, 200);
+    if (!text) return;
+
+    // Get the element containing the selection
+    const anchorNode = selection.anchorNode;
+    const element = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement;
+    if (!element) return;
+
+    // Skip our own UI
+    if (element.closest('#ai-devtools-floating-widget, #ai-devtools-recording-indicator')) {
+      return;
+    }
+
+    sendInteractionEvent('selection', {
+      text,
+      textLength: text.length,
+      selector: getSelector(element),
+      startOffset: selection.anchorOffset,
+      endOffset: selection.focusOffset,
+    });
+  }, 300);
+}
+
+/**
+ * Handle focus events
+ */
+function handleFocus(event: FocusEvent): void {
+  const target = event.target as Element;
+  if (!target) return;
+
+  // Only track focus on interactive elements
+  if (!(target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target.getAttribute('contenteditable') === 'true' ||
+        target.getAttribute('role') === 'textbox')) {
+    return;
+  }
+
+  // Skip our own UI
+  if (target.closest('#ai-devtools-floating-widget, #ai-devtools-recording-indicator')) {
+    return;
+  }
+
+  const selector = getSelector(target);
+  const role = getElementRole(target);
+  const label = getElementText(target);
+
+  sendInteractionEvent('focus', {
+    selector,
+    role,
+    label,
+  });
+}
+
+/**
+ * Handle blur events
+ */
+function handleBlur(event: FocusEvent): void {
+  const target = event.target as Element;
+  if (!target) return;
+
+  // Only track blur on interactive elements
+  if (!(target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target.getAttribute('contenteditable') === 'true' ||
+        target.getAttribute('role') === 'textbox')) {
+    return;
+  }
+
+  // Skip our own UI
+  if (target.closest('#ai-devtools-floating-widget, #ai-devtools-recording-indicator')) {
+    return;
+  }
+
+  const selector = getSelector(target);
+  const role = getElementRole(target);
+  const label = getElementText(target);
+
+  // Capture final value on blur for inputs
+  let finalValue = '';
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    if (target.type === 'password') {
+      finalValue = '*'.repeat(target.value.length);
+    } else {
+      finalValue = target.value;
+    }
+  }
+
+  sendInteractionEvent('blur', {
+    selector,
+    role,
+    label,
+    finalValue,
+    valueLength: finalValue.length,
+  });
+}
+
+/**
  * Start monitoring user interactions
  */
 export function startInteractionMonitoring(): void {
@@ -278,6 +422,12 @@ export function startInteractionMonitoring(): void {
   document.addEventListener('submit', handleSubmit, { capture: true });
   document.addEventListener('keydown', handleKeydown, { capture: true });
   document.addEventListener('mousemove', handleMouseMove, { passive: true });
+  document.addEventListener('copy', handleClipboard, { capture: true });
+  document.addEventListener('cut', handleClipboard, { capture: true });
+  document.addEventListener('paste', handleClipboard, { capture: true });
+  document.addEventListener('selectionchange', handleSelectionChange);
+  document.addEventListener('focusin', handleFocus, { capture: true });
+  document.addEventListener('focusout', handleBlur, { capture: true });
 
   console.log('[Clueprint] Interaction monitoring started');
 }
@@ -295,6 +445,13 @@ export function stopInteractionMonitoring(): void {
   document.removeEventListener('input', handleInput, { capture: true });
   document.removeEventListener('submit', handleSubmit, { capture: true });
   document.removeEventListener('keydown', handleKeydown, { capture: true });
+  document.removeEventListener('mousemove', handleMouseMove);
+  document.removeEventListener('copy', handleClipboard, { capture: true });
+  document.removeEventListener('cut', handleClipboard, { capture: true });
+  document.removeEventListener('paste', handleClipboard, { capture: true });
+  document.removeEventListener('selectionchange', handleSelectionChange);
+  document.removeEventListener('focusin', handleFocus, { capture: true });
+  document.removeEventListener('focusout', handleBlur, { capture: true });
 }
 
 /**

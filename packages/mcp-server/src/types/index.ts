@@ -24,7 +24,11 @@ export type EventType =
   | 'element_select'
   | 'form_submit'
   | 'keypress'
-  | 'mouse_move';
+  | 'mouse_move'
+  | 'clipboard'
+  | 'selection'
+  | 'focus'
+  | 'blur';
 
 // Element capture
 export interface ElementRect {

@@ -16,12 +16,14 @@ import type { BrowserContext, NetworkEntry, ExtensionMessage } from '../types';
 // Extension state
 let isExtensionActive = false;
 let isRecording = false;
+let isBuffering = false;
 let recordingIndicator: HTMLElement | null = null;
 let recordingStartTime: number | null = null;
 let recordingTimerInterval: number | null = null;
 let floatingWidget: HTMLElement | null = null;
 let widgetStateInterval: number | null = null;
 let lastWidgetRecordingState = false;
+let lastWidgetBufferingState = false;
 let widgetHiddenForSelection = false;
 
 /**
@@ -73,6 +75,13 @@ function initialize(): void {
   chrome.runtime.sendMessage({ type: 'CONTENT_READY' }).catch(() => {
     // Background not ready yet, that's OK
   });
+
+  // Fetch initial state from background
+  chrome.runtime.sendMessage({ type: 'GET_STATUS' }).then((response: any) => {
+    if (response?.isBuffering !== undefined) {
+      isBuffering = response.isBuffering;
+    }
+  }).catch(() => {});
 
   // Show floating toolbar based on saved preference (default: visible)
   chrome.storage.local.get('widgetVisible').then(({ widgetVisible }) => {
@@ -160,15 +169,19 @@ function handleMessage(
       break;
 
     case 'STATUS_UPDATE':
-      // Update local recording state from background
+      // Update local state from background
       if (message.payload && typeof message.payload === 'object') {
-        const status = message.payload as { isRecording?: boolean };
+        const status = message.payload as { isRecording?: boolean; isBuffering?: boolean };
         if (status.isRecording !== undefined) {
           if (status.isRecording && !isRecording) {
             showRecordingIndicator();
           } else if (!status.isRecording && isRecording) {
             hideRecordingIndicator();
           }
+        }
+        if (status.isBuffering !== undefined) {
+          isBuffering = status.isBuffering;
+          updateFloatingWidgetState();
         }
       }
       sendResponse({ success: true });
@@ -423,11 +436,14 @@ function createFloatingWidget(): void {
     target,
     props: {
       isRecording,
+      isBuffering,
       isInspectActive: isInspectMode(),
       isRegionActive: isFreeSelectMode(),
       onInspect: () => activateInspectMode(true),
       onRegion: () => activateFreeSelectDrag(),
-      onRecord: toggleRecording,
+      onStartRecording: () => chrome.runtime.sendMessage({ type: 'START_RECORDING' }),
+      onStopRecording: () => chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }),
+      onSendBuffer: () => chrome.runtime.sendMessage({ type: 'SEND_BUFFER' }),
       onClose: () => { closeWidget(); chrome.storage.local.set({ widgetVisible: false }); },
     },
   });
@@ -478,17 +494,6 @@ function closeWidget(): void {
 }
 
 /**
- * Toggle recording state
- */
-function toggleRecording(): void {
-  if (isRecording) {
-    chrome.runtime.sendMessage({ type: 'STOP_RECORDING' });
-  } else {
-    chrome.runtime.sendMessage({ type: 'START_RECORDING' });
-  }
-}
-
-/**
  * Update floating widget to reflect current state
  */
 function updateFloatingWidgetState(): void {
@@ -522,9 +527,10 @@ function updateFloatingWidgetState(): void {
     }
   }
 
-  // Only remount if recording state actually changed
-  if (isRecording === lastWidgetRecordingState) return;
+  // Only remount if recording or buffering state changed
+  if (isRecording === lastWidgetRecordingState && isBuffering === lastWidgetBufferingState) return;
   lastWidgetRecordingState = isRecording;
+  lastWidgetBufferingState = isBuffering;
 
   const target = (floatingWidget as any)._target as HTMLElement | undefined;
   const oldInstance = (floatingWidget as any)._instance;
@@ -536,11 +542,14 @@ function updateFloatingWidgetState(): void {
     target,
     props: {
       isRecording,
+      isBuffering,
       isInspectActive: isInspectMode(),
       isRegionActive: isFreeSelectMode(),
       onInspect: () => activateInspectMode(true),
       onRegion: () => activateFreeSelectDrag(),
-      onRecord: toggleRecording,
+      onStartRecording: () => chrome.runtime.sendMessage({ type: 'START_RECORDING' }),
+      onStopRecording: () => chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }),
+      onSendBuffer: () => chrome.runtime.sendMessage({ type: 'SEND_BUFFER' }),
       onClose: () => { closeWidget(); chrome.storage.local.set({ widgetVisible: false }); },
     },
   });

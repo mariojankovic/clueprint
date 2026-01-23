@@ -125,18 +125,19 @@
   const displayedConsole = $derived(consoleEntries.slice(-20).reverse());
 </script>
 
-<div class="min-h-screen bg-[#1e1e1e] text-[#d4d4d4] font-mono text-xs">
+<div class="min-h-screen bg-black text-white font-['Inter',sans-serif] text-xs p-4">
   <!-- Header -->
-  <header class="flex justify-between items-center py-2 px-3 bg-[#252526] border-b border-[#3c3c3c]">
-    <h1 class="text-[13px] font-medium text-white">Clueprint</h1>
+  <header class="flex justify-between items-center mb-4">
+    <h1 class="text-lg font-normal text-white/90 font-['Fraunces',serif]">clueprint</h1>
     <div class="flex items-center gap-2">
       <div
-        class="flex items-center gap-1 py-1 px-2 rounded text-[11px] {mcpConnected ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}"
+        class="flex items-center gap-1.5 py-1.5 px-3 rounded-full text-[11px] border {mcpConnected ? 'border-green-500/20 bg-green-500/10 text-green-400' : 'border-red-500/20 bg-red-500/10 text-red-400'}"
       >
-        <span>MCP: {mcpConnected ? 'Connected' : 'Disconnected'}</span>
+        <span class="w-1.5 h-1.5 rounded-full {mcpConnected ? 'bg-green-400' : 'bg-red-400'}"></span>
+        <span>MCP {mcpConnected ? 'Connected' : 'Disconnected'}</span>
       </div>
       <button
-        class="py-1.5 px-3 border-none rounded bg-[#0e639c] text-white cursor-pointer text-[11px] hover:bg-[#1177bb]"
+        class="py-1.5 px-3 border border-white/10 rounded-lg bg-white/5 text-white/70 cursor-pointer text-[11px] transition-all duration-200 hover:bg-white/10 hover:text-white/90"
         onclick={clearLogs}
       >
         Clear
@@ -144,30 +145,30 @@
     </div>
   </header>
 
-  <div class="p-3">
+  <div class="flex flex-col gap-4">
     <!-- Network Section -->
-    <section class="mb-4">
-      <h2 class="text-[11px] uppercase tracking-wider text-[#888] mb-2 pb-1 border-b border-[#3c3c3c]">
-        Network Requests (Failures Only)
+    <section class="bg-white/3 border border-white/8 rounded-2xl p-4 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
+      <h2 class="text-[11px] uppercase tracking-wider text-white/40 mb-3 font-medium">
+        Network Failures
       </h2>
       {#if displayedNetwork.length === 0}
-        <div class="py-6 text-center text-[#666]">No failed requests yet</div>
+        <div class="py-8 text-center text-white/25 text-[11px]">No failed requests yet</div>
       {:else}
-        <div class="flex flex-col gap-1">
+        <div class="flex flex-col gap-1.5">
           {#each displayedNetwork as entry}
             <div
-              class="flex items-center gap-2 py-1.5 px-2 rounded text-[11px] {entry.status >= 400 ? 'bg-red-500/10' : 'bg-[#252526]'}"
+              class="flex items-center gap-2 py-2 px-3 rounded-xl text-[11px] bg-white/3 border border-white/6 transition-colors duration-150 hover:bg-white/6"
             >
-              <span class="font-semibold text-[#569cd6] min-w-[40px]">{entry.method}</span>
+              <span class="font-medium text-white/60 min-w-10">{entry.method}</span>
               <span
-                class="py-0.5 px-1.5 rounded text-[10px] font-semibold {entry.status >= 400 ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}"
+                class="py-0.5 px-2 rounded-full text-[10px] font-medium {entry.status >= 500 ? 'bg-red-500/15 text-red-400' : 'bg-orange-500/15 text-orange-400'}"
               >
                 {entry.status}
               </span>
-              <span class="flex-1 text-[#9cdcfe] overflow-hidden text-ellipsis whitespace-nowrap" title={entry.url}>
+              <span class="flex-1 text-white/50 overflow-hidden text-ellipsis whitespace-nowrap font-mono" title={entry.url}>
                 {truncateUrl(entry.url)}
               </span>
-              <span class="text-[#888] text-[10px]">{entry.duration}ms</span>
+              <span class="text-white/25 text-[10px]">{entry.duration}ms</span>
             </div>
           {/each}
         </div>
@@ -175,21 +176,21 @@
     </section>
 
     <!-- Console Section -->
-    <section>
-      <h2 class="text-[11px] uppercase tracking-wider text-[#888] mb-2 pb-1 border-b border-[#3c3c3c]">
+    <section class="bg-white/3 border border-white/8 rounded-2xl p-4 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
+      <h2 class="text-[11px] uppercase tracking-wider text-white/40 mb-3 font-medium">
         Console Errors
       </h2>
       {#if displayedConsole.length === 0}
-        <div class="py-6 text-center text-[#666]">No errors yet</div>
+        <div class="py-8 text-center text-white/25 text-[11px]">No errors yet</div>
       {:else}
-        <div class="flex flex-col gap-1">
+        <div class="flex flex-col gap-1.5">
           {#each displayedConsole as entry}
             <div
-              class="py-1.5 px-2 rounded font-mono text-[11px] leading-relaxed break-words border-l-[3px] {entry.type === 'error' ? 'border-l-red-500 bg-red-500/10' : entry.type === 'warn' ? 'border-l-orange-500 bg-orange-500/10' : 'border-l-[#3c3c3c] bg-[#252526]'}"
+              class="py-2 px-3 rounded-xl font-mono text-[11px] leading-relaxed wrap-break-word border-l-2 bg-white/3 border border-white/6 {entry.type === 'error' ? 'border-l-red-400' : entry.type === 'warn' ? 'border-l-orange-400' : 'border-l-white/20'}"
             >
-              <span class="text-[#888] mr-2">{formatTime(entry.timestamp)}</span>
-              <span class="font-semibold mr-2">{entry.type.toUpperCase()}</span>
-              <span>{@html escapeHtml(entry.message.slice(0, 200))}</span>
+              <span class="text-white/25 mr-2">{formatTime(entry.timestamp)}</span>
+              <span class="font-medium mr-2 {entry.type === 'error' ? 'text-red-400' : entry.type === 'warn' ? 'text-orange-400' : 'text-white/50'}">{entry.type.toUpperCase()}</span>
+              <span class="text-white/60">{@html escapeHtml(entry.message.slice(0, 200))}</span>
             </div>
           {/each}
         </div>

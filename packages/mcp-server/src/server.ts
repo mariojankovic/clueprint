@@ -20,6 +20,7 @@ import {
   requestDiagnostics,
   startRecording,
   stopRecording,
+  requestRecentActivity,
   requestSnapshot,
   requestDiff,
 } from './websocket.js';
@@ -102,6 +103,20 @@ const TOOLS = [
     inputSchema: {
       type: 'object' as const,
       properties: {},
+    },
+  },
+  {
+    name: 'activity',
+    description: 'Get the last 30 seconds of browser activity from the background capture buffer. The user must have background capture enabled in the browser widget. Returns a timeline of user interactions, network requests, and errors without needing to start/stop a recording.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        includeSuccessfulRequests: {
+          type: 'boolean',
+          default: false,
+          description: 'Include successful (2xx) network requests in the output',
+        },
+      },
     },
   },
   {
@@ -293,6 +308,23 @@ async function handleToolCall(name: string, args: Record<string, unknown>) {
 
       const report = formatFlowReport(recording);
       return textResponse(report);
+    }
+
+    case 'activity': {
+      try {
+        const recording = await requestRecentActivity();
+        if (!recording) {
+          return errorResponse(
+            'No recent activity available. Possible reasons:\n' +
+            '1. Background capture is not enabled (click the record button in the floating widget to enable it)\n' +
+            '2. No user activity has occurred in the last 30 seconds'
+          );
+        }
+        const report = formatFlowReport(recording);
+        return textResponse(report);
+      } catch (error) {
+        return errorResponse(`Failed to get recent activity: ${error}`);
+      }
     }
 
     case 'snapshot_dom': {
