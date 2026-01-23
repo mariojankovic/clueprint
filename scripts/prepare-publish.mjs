@@ -9,7 +9,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 const publishDir = join(root, 'publish');
 
-console.log('Preparing @clueprint/mcp for publishing...\n');
+// Version from git tag (v1.2.3 → 1.2.3) or fallback
+const version = process.env.RELEASE_VERSION?.replace(/^v/, '') || '1.1.1';
+
+console.log(`Preparing @clueprint/mcp@${version} for publishing...\n`);
 
 // Step 1: Build all packages
 console.log('1. Building all packages...');
@@ -40,7 +43,7 @@ console.log('   README.md  ← README.md');
 // Step 4: Generate package.json
 const packageJson = {
   name: '@clueprint/mcp',
-  version: '1.1.0',
+  version,
   description: 'Browser visibility for AI assistants — MCP server + Chrome extension',
   type: 'module',
   bin: {
