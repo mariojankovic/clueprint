@@ -12,24 +12,42 @@ interface StartOptions {
 }
 
 export async function startServer(options: StartOptions): Promise<void> {
-  p.intro(pc.bgCyan(pc.black(' clueprint start ')));
-
   const port = options.port || '7007';
-  const projectRoot = findProjectRoot();
+  const mcpServerPath = findServerPath();
 
-  if (!projectRoot) {
-    p.log.error('Clueprint project not found');
-    p.outro(pc.red('Run from the project directory'));
+  if (!mcpServerPath) {
+    // Only use fancy output if interactive
+    if (process.stdin.isTTY) {
+      p.log.error('MCP server not found');
+      p.outro(pc.dim('Run: clueprint setup'));
+    } else {
+      process.stderr.write('[MCP] Server not found\n');
+    }
     process.exit(1);
   }
 
-  const mcpServerPath = join(projectRoot, 'packages/mcp-server/dist/index.js');
+  // MCP stdio mode: stdin is not a TTY, so an MCP client is connected.
+  // Pass stdio through directly — no banners, no spinners, no color wrapping.
+  if (!process.stdin.isTTY) {
+    const serverProcess = spawn('node', [mcpServerPath], {
+      env: { ...process.env, PORT: port },
+      stdio: 'inherit',
+    });
 
-  if (!existsSync(mcpServerPath)) {
-    p.log.error('MCP server not built');
-    p.outro(pc.dim('Run: clueprint setup'));
-    process.exit(1);
+    serverProcess.on('error', (error) => {
+      process.stderr.write(`[MCP] Failed to start: ${error.message}\n`);
+      process.exit(1);
+    });
+
+    serverProcess.on('close', (code) => {
+      process.exit(code ?? 0);
+    });
+
+    return;
   }
+
+  // Interactive mode: show fancy UI
+  p.intro(pc.bgCyan(pc.black(' clueprint start ')));
 
   const spinner = p.spinner();
   spinner.start('Starting MCP server...');
@@ -41,7 +59,6 @@ export async function startServer(options: StartOptions): Promise<void> {
 
   let started = false;
 
-  // Helper to check for server started patterns
   function checkStarted(output: string): boolean {
     return output.includes('Server started') ||
            output.includes('listening') ||
@@ -60,11 +77,9 @@ export async function startServer(options: StartOptions): Promise<void> {
     process.stdout.write(pc.dim(output));
   });
 
-  // Server logs often go to stderr - don't treat as error
   serverProcess.stderr?.on('data', (data) => {
     const output = data.toString();
 
-    // Check if this is actually a success message
     if (!started && checkStarted(output)) {
       started = true;
       spinner.stop(`MCP server running`);
@@ -73,7 +88,6 @@ export async function startServer(options: StartOptions): Promise<void> {
       console.log();
     }
 
-    // Color warnings yellow, errors red, info dim
     if (output.includes('error') || output.includes('Error')) {
       process.stderr.write(pc.red(output));
     } else if (output.includes('warn') || output.includes('already in use')) {
@@ -96,7 +110,6 @@ export async function startServer(options: StartOptions): Promise<void> {
     }
   });
 
-  // Handle graceful shutdown
   process.on('SIGINT', () => {
     console.log('\n');
     serverProcess.kill('SIGTERM');
@@ -106,8 +119,33 @@ export async function startServer(options: StartOptions): Promise<void> {
     }, 300);
   });
 
-  // Keep process running
   await new Promise(() => {});
+}
+
+function findServerPath(): string | null {
+  // 1. Published package: server is sibling to cli/ directory
+  //    publish/cli/commands/start.js → publish/server/index.cjs
+  const publishedPath = join(__dirname, '..', '..', 'server', 'index.cjs');
+  if (existsSync(publishedPath)) {
+    return publishedPath;
+  }
+
+  // 2. Local dev: find project root and use packages/mcp-server/dist/index.js
+  const projectRoot = findProjectRoot();
+  if (projectRoot) {
+    const devPath = join(projectRoot, 'packages/mcp-server/dist/index.js');
+    if (existsSync(devPath)) {
+      return devPath;
+    }
+  }
+
+  // 3. Installed at ~/.clueprint/server/index.cjs
+  const homePath = join(process.env.HOME || '', '.clueprint', 'server', 'index.cjs');
+  if (existsSync(homePath)) {
+    return homePath;
+  }
+
+  return null;
 }
 
 function findProjectRoot(): string | null {
@@ -126,11 +164,6 @@ function findProjectRoot(): string | null {
       }
     }
     dir = dirname(dir);
-  }
-
-  const globalRoot = join(__dirname, '../../../../..');
-  if (existsSync(join(globalRoot, 'packages/chrome-extension'))) {
-    return globalRoot;
   }
 
   return null;

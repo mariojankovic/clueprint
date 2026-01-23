@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { spawn } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
@@ -135,8 +135,13 @@ async function setupFromNpm(options: SetupOptions): Promise<void> {
 
   try {
     mkdirSync(clueprintDir, { recursive: true });
-    cpSync(bundledExtension, join(clueprintDir, 'extension'), { recursive: true });
-    cpSync(bundledServer, join(clueprintDir, 'server'), { recursive: true });
+    // Clean previous install to remove stale files from older versions
+    const extDest = join(clueprintDir, 'extension');
+    const serverDest = join(clueprintDir, 'server');
+    if (existsSync(extDest)) rmSync(extDest, { recursive: true });
+    if (existsSync(serverDest)) rmSync(serverDest, { recursive: true });
+    cpSync(bundledExtension, extDest, { recursive: true });
+    cpSync(bundledServer, serverDest, { recursive: true });
     copySpinner.stop('Chrome extension and MCP server installed');
   } catch (error) {
     copySpinner.stop('Installation failed');
@@ -144,10 +149,9 @@ async function setupFromNpm(options: SetupOptions): Promise<void> {
     process.exit(1);
   }
 
-  // Step 2: Configure MCP for Claude Code (direct node path for instant startup)
+  // Step 2: Configure MCP for Claude Code (npx ensures latest version)
   if (!options.skipMcp) {
-    const serverPath = join(clueprintDir, 'server', 'index.cjs');
-    await configureMcp({ command: 'node', args: [serverPath] });
+    await configureMcp({ command: 'npx', args: ['-y', '@clueprint/mcp', 'start'] });
   } else {
     p.log.info('Skipping MCP configuration (--skip-mcp flag)');
   }
