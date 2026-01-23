@@ -1,200 +1,254 @@
 <script lang="ts">
-  import { Bookmark, Wrench, Sparkles } from 'lucide-svelte';
-  import { onMount, onDestroy } from 'svelte';
+  import Picker from './Picker.svelte';
 
   interface Props {
-    elementName: string;
-    onSelect: (intent: 'tag' | 'fix' | 'beautify', instruction?: string) => void;
+    tag: string;
+    attrs: Array<{ name: string; value: string }>;
+    textContent: string;
+    parents: Array<{ label: string }>;
+    pageUrl: string;
+    childCount: number;
+    styles: Array<{ prop: string; value: string }>;
+    onSelect: (intent: 'tag' | 'fix' | 'beautify') => void;
     onClose: () => void;
+    onHighlightParent: (index: number) => void;
+    onUnhighlightParent: () => void;
+    onSelectParent: (index: number) => void;
   }
 
-  let { elementName, onSelect, onClose }: Props = $props();
-  let instruction = $state('');
-  let inputEl: HTMLInputElement | undefined = $state();
+  let { tag, attrs, textContent, parents, pageUrl, childCount, styles, onSelect, onClose, onHighlightParent, onUnhighlightParent, onSelectParent }: Props = $props();
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      onSelect('tag', instruction.trim() || undefined);
-    }
+  function isColorValue(value: string): boolean {
+    return value.startsWith('#') || value.startsWith('rgb');
   }
-
-  function handleEscape(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose();
-    }
-  }
-
-  function handleClickOutside(e: MouseEvent) {
-    const target = e.target as Node;
-    const picker = document.querySelector('.picker-container');
-    if (picker && !picker.contains(target)) {
-      onClose();
-    }
-  }
-
-  onMount(() => {
-    document.addEventListener('keydown', handleEscape, true);
-    setTimeout(() => document.addEventListener('click', handleClickOutside), 100);
-  });
-
-  onDestroy(() => {
-    document.removeEventListener('keydown', handleEscape, true);
-    document.removeEventListener('click', handleClickOutside);
-  });
 </script>
 
-<div class="picker-container">
-  <div class="picker-header">{elementName}</div>
-
-  <div class="btn-group">
-    <button
-      class="btn btn-primary"
-      onclick={() => onSelect('tag', instruction.trim() || undefined)}
-    >
-      <Bookmark size={14} />
-      Tag for AI
-    </button>
-
-    <div class="btn-row">
-      <button
-        class="btn"
-        onclick={() => onSelect('fix', instruction.trim() || undefined)}
-      >
-        <Wrench size={14} />
-        Fix
-      </button>
-
-      <button
-        class="btn"
-        onclick={() => onSelect('beautify', instruction.trim() || undefined)}
-      >
-        <Sparkles size={14} />
-        Beautify
-      </button>
+<Picker {onSelect} {onClose}>
+  {#snippet content()}
+    <!-- Page & location context -->
+    <div class="context-header">
+      <span class="page-url">{pageUrl}</span>
+      {#if parents.length > 0}
+        <div class="parent-path">
+          {#each parents as parent, i}
+            <span
+              class="breadcrumb"
+              role="button"
+              tabindex="-1"
+              onclick={() => onSelectParent(i)}
+              onkeydown={(e) => e.key === 'Enter' && onSelectParent(i)}
+              onmouseenter={() => onHighlightParent(i)}
+              onmouseleave={() => onUnhighlightParent()}
+            >{parent.label}</span>{#if i < parents.length - 1}<span class="breadcrumb-sep">›</span>{/if}
+          {/each}
+        </div>
+      {/if}
     </div>
-  </div>
 
-  <input
-    bind:this={inputEl}
-    bind:value={instruction}
-    type="text"
-    class="note-input"
-    placeholder="Add a note (optional)..."
-    onkeydown={handleKeydown}
-  />
-</div>
+    <!-- Section: DOM -->
+    <div class="section-label">ELEMENT</div>
+
+    <!-- Syntax-highlighted HTML tag -->
+    <div class="html-block">
+      <span class="syntax-bracket">&lt;</span><span class="syntax-tag">{tag}</span>
+      {#each attrs as { name, value }}
+        <div class="attr-line">
+          <span class="syntax-attr">{name}</span><span class="syntax-punct">=&quot;</span><span class="syntax-value">{value}</span><span class="syntax-punct">&quot;</span>
+        </div>
+      {/each}
+      <span class="syntax-bracket">&gt;</span>
+
+      {#if textContent}
+        <div class="text-content">&quot;{textContent}&quot;</div>
+      {/if}
+
+      {#if childCount > 0}
+        <div class="children-indicator">… {childCount} child{childCount !== 1 ? 'ren' : ''}</div>
+      {/if}
+
+      <span class="syntax-bracket">&lt;/</span><span class="syntax-tag-close">{tag}</span><span class="syntax-bracket">&gt;</span>
+    </div>
+
+    <!-- Section: Styles -->
+    {#if styles.length > 0}
+      <div class="section-label" style="margin-top: 10px;">STYLES</div>
+      <div class="styles-block">
+        {#each styles as { prop, value }}
+          <div class="style-row">
+            <span class="style-prop">{prop}</span>
+            <span class="style-value">
+              {#if isColorValue(value)}
+                <span class="color-swatch" style="background-color: {value};"></span>
+              {/if}
+              {value}
+            </span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {/snippet}
+</Picker>
 
 <style>
-  .picker-container {
-    background: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 14px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
-    padding: 12px;
-    min-width: 220px;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  @import "tailwindcss";
+
+  :global(.context-header) {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
-  .picker-header {
-    margin-bottom: 10px;
-    padding: 0 2px;
-    color: rgba(255, 255, 255, 0.4);
-    font-size: 10px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-  }
-
-  .btn-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 10px;
-  }
-
-  .btn-row {
-    display: flex;
-    gap: 6px;
-  }
-
-  .btn-row .btn {
-    flex: 1;
-  }
-
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 10px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.8);
-    cursor: pointer;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 500;
-    font-family: inherit;
-    transition: all 0.15s ease;
-  }
-
-  .btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.15);
-    color: #fff;
-  }
-
-  .btn:active {
-    transform: scale(0.98);
-  }
-
-  .btn :global(svg) {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-    opacity: 0.7;
-  }
-
-  .btn-primary {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: transparent;
-    color: #000;
-  }
-
-  .btn-primary :global(svg) {
-    opacity: 0.8;
-  }
-
-  .btn-primary:hover {
-    background: #fff;
-  }
-
-  .note-input {
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.8);
-    background: rgba(255, 255, 255, 0.04);
-    outline: none;
-    font-family: inherit;
-    transition: all 0.15s ease;
-  }
-
-  .note-input:focus {
-    border-color: rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.06);
-  }
-
-  .note-input::placeholder {
+  :global(.page-url) {
+    display: block;
+    font-size: 9px;
     color: rgba(255, 255, 255, 0.3);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.parent-path) {
+    display: flex;
+    align-items: center;
+    margin-top: 3px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.25);
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  :global(.parent-path::-webkit-scrollbar) {
+    display: none;
+  }
+
+  :global(.breadcrumb) {
+    cursor: pointer;
+    padding: 1px 3px;
+    border-radius: 3px;
+    transition: color 0.1s, background 0.1s;
+    flex-shrink: 0;
+  }
+
+  :global(.breadcrumb:hover) {
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  :global(.breadcrumb-sep) {
+    margin: 0 2px;
+    color: rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+  }
+
+  :global(.section-label) {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.2);
+    margin-bottom: 6px;
+    font-family: inherit;
+  }
+
+  :global(.html-block) {
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  :global(.syntax-bracket) {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  :global(.syntax-tag) {
+    color: #7dcfff;
+    font-weight: 500;
+  }
+
+  :global(.syntax-tag-close) {
+    color: rgba(125, 207, 255, 0.6);
+  }
+
+  :global(.attr-line) {
+    padding-left: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.syntax-attr) {
+    color: #bb9af7;
+  }
+
+  :global(.syntax-punct) {
+    color: rgba(255, 255, 255, 0.2);
+  }
+
+  :global(.syntax-value) {
+    color: #e0af68;
+  }
+
+  :global(.text-content) {
+    padding-left: 14px;
+    color: #9ece6a;
+    opacity: 0.7;
+    font-style: italic;
+    font-size: 10px;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.children-indicator) {
+    padding-left: 14px;
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 10px;
+  }
+
+  :global(.styles-block) {
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+  }
+
+  :global(.style-row) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 0;
+  }
+
+  :global(.style-prop) {
+    color: rgba(255, 255, 255, 0.4);
+    flex-shrink: 0;
+  }
+
+  :global(.style-value) {
+    color: rgba(255, 255, 255, 0.75);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  :global(.color-swatch) {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.15);
   }
 </style>
+

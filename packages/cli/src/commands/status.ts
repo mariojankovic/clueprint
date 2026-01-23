@@ -99,8 +99,8 @@ export async function status(): Promise<void> {
       const config = JSON.parse(readFileSync(claudeConfigPath, 'utf-8'));
       const mcpServers = config.mcpServers || {};
 
-      if (mcpServers['ai-browser-devtools']) {
-        const serverConfig = mcpServers['ai-browser-devtools'];
+      if (mcpServers['clueprint']) {
+        const serverConfig = mcpServers['clueprint'];
         const serverPath = serverConfig.args?.[0] || 'unknown';
         const serverExists = existsSync(serverPath);
 
@@ -188,7 +188,7 @@ function findProjectRoot(): string | null {
     if (existsSync(packageJson)) {
       try {
         const pkg = JSON.parse(readFileSync(packageJson, 'utf-8'));
-        if (pkg.name === 'ai-browser-devtools' || existsSync(join(dir, 'packages/chrome-extension'))) {
+        if (pkg.name === 'clueprint' || existsSync(join(dir, 'packages/chrome-extension'))) {
           return dir;
         }
       } catch {

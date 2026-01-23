@@ -104,7 +104,6 @@ export interface InspectCapture {
   mode: 'inspect';
   intent: Intent;
   timestamp: number;
-  userInstruction?: string;
   element: {
     selector: string;
     tag: string;
@@ -126,7 +125,6 @@ export interface InspectCapture {
 export interface FreeSelectCapture {
   mode: 'free-select';
   intent: Intent;
-  userNote?: string;
   timestamp: number;
   region: ElementRect;
   screenshot: string;

@@ -2,38 +2,55 @@
   import type { Snippet } from 'svelte';
 
   interface Props {
-    variant?: 'default' | 'primary' | 'danger' | 'full';
+    variant?: 'primary' | 'secondary' | 'action' | 'action-danger';
     onclick?: () => void;
     children: Snippet;
+    right?: Snippet;
   }
 
-  let { variant = 'default', onclick, children }: Props = $props();
-
-  const baseClasses = 'inline-flex items-center justify-center gap-2 px-3.5 py-2.5 border rounded-[10px] text-white text-sm font-medium cursor-pointer transition-all duration-200';
-
-  const variantClasses = {
-    default: 'bg-white/[0.04] border-white/10 hover:bg-white/10 hover:border-white/20',
-    primary: 'bg-white/[0.08] border-white/[0.12] shadow-[0_8px_24px_rgba(0,0,0,0.3)] hover:bg-white/[0.12] hover:border-white/20',
-    danger: 'bg-red-500/15 border-red-500/30 shadow-[0_8px_24px_rgba(239,68,68,0.2)] hover:bg-red-500/25 hover:border-red-500/40',
-    full: 'w-full text-left justify-start mb-2.5 last:mb-3.5',
-  };
-
-  $effect(() => {
-    // Variant reactivity
-  });
+  let { variant = 'secondary', onclick, children, right }: Props = $props();
 </script>
 
-<button
-  class="{baseClasses} {variantClasses[variant]} hover:-translate-y-px active:scale-[0.98] active:translate-y-0"
-  onclick={onclick}
->
-  {@render children()}
-</button>
+{#if variant === 'primary'}
+  <button
+    class="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 border border-transparent rounded-[10px] bg-white/95 text-black cursor-pointer text-center text-xs font-medium transition-all duration-150 hover:bg-white active:scale-[0.98] [&_svg]:w-3.5 [&_svg]:h-3.5 [&_svg]:shrink-0 [&_svg]:opacity-80"
+    {onclick}
+  >
+    {@render children()}
+  </button>
+{:else if variant === 'action'}
+  <button
+    class="flex justify-between items-center w-full h-14 px-[18px] bg-white/[0.04] border border-white/[0.08] rounded-xl text-white cursor-pointer transition-all duration-200 backdrop-blur-[20px] hover:bg-white/[0.08] hover:border-white/[0.12] hover:-translate-y-px active:translate-y-0"
+    {onclick}
+  >
+    <div class="flex items-center gap-3">
+      {@render children()}
+    </div>
+    {#if right}
+      {@render right()}
+    {/if}
+  </button>
+{:else if variant === 'action-danger'}
+  <button
+    class="flex justify-between items-center w-full h-14 px-[18px] bg-red-400/10 border border-red-400/20 rounded-xl text-white cursor-pointer transition-all duration-200 backdrop-blur-[20px] hover:bg-red-400/[0.15] hover:border-red-400/30 hover:-translate-y-px active:translate-y-0"
+    {onclick}
+  >
+    <div class="flex items-center gap-3">
+      {@render children()}
+    </div>
+    {#if right}
+      {@render right()}
+    {/if}
+  </button>
+{:else}
+  <button
+    class="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 border border-white/10 rounded-[10px] bg-white/5 text-white/80 cursor-pointer text-center text-xs font-medium transition-all duration-150 hover:bg-white/10 hover:border-white/15 hover:text-white active:scale-[0.98] [&_svg]:w-3.5 [&_svg]:h-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70"
+    {onclick}
+  >
+    {@render children()}
+  </button>
+{/if}
 
 <style>
-  button :global(svg) {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
+  @import "tailwindcss";
 </style>

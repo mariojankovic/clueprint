@@ -182,8 +182,6 @@ export interface InspectCapture {
   mode: 'inspect';
   intent: Intent;
   timestamp: number;
-  userInstruction?: string;
-
   element: {
     selector: string;
     tag: string;
@@ -228,7 +226,6 @@ export interface AestheticAnalysis {
 export interface FreeSelectCapture {
   mode: 'free-select';
   intent: Intent;
-  userNote?: string;
   timestamp: number;
 
   region: ElementRect;
@@ -395,7 +392,22 @@ export type MessageType =
   | 'NETWORK_EVENT'
   | 'CONSOLE_EVENT'
   | 'EXTENSION_STATUS'
-  | 'CONNECT_MCP';
+  | 'CONNECT_MCP'
+  | 'TOGGLE_INSPECT'
+  | 'TOGGLE_REGION'
+  | 'ACTIVATE_INSPECT'
+  | 'DEACTIVATE_INSPECT'
+  | 'SHOW_WIDGET'
+  | 'HIDE_WIDGET'
+  | 'TOGGLE_WIDGET'
+  | 'GET_WIDGET_STATE'
+  | 'GET_CONSOLE_BUFFER'
+  | 'GET_NETWORK_BUFFER'
+  | 'GET_PERFORMANCE'
+  | 'PING'
+  | 'RECORDING_STARTED'
+  | 'RECORDING_STOPPED'
+  | 'STATUS_UPDATE';
 
 export interface ExtensionMessage {
   type: MessageType;

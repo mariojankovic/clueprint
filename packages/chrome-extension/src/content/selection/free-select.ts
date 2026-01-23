@@ -17,11 +17,11 @@ import type {
 } from '../../types';
 
 let isFreeSelectActive = false;
-let isManuallyActivated = false; // True when activated via toolbar button
 let isDrawing = false;
 let startX = 0;
 let startY = 0;
 let selectionOverlay: HTMLElement | null = null;
+let pickerCleanup: (() => void) | null = null; // Cleanup function for the current picker
 
 /**
  * Create selection rectangle overlay
@@ -59,33 +59,11 @@ function updateSelectionRect(endX: number, endY: number): void {
 }
 
 /**
- * Handle keydown for Cmd+Shift combo and Escape
+ * Handle keydown for Escape to cancel
  */
 function handleKeyDown(event: KeyboardEvent): void {
-  // Escape to cancel
-  if (event.key === 'Escape') {
-    if (isFreeSelectActive) {
-      deactivateFreeSelectDrag();
-    }
-    return;
-  }
-
-  // Cmd+Shift (Mac) or Ctrl+Shift (Windows)
-  if ((event.metaKey || event.ctrlKey) && event.shiftKey) {
-    if (!isFreeSelectActive) {
-      activateFreeSelectDrag();
-    }
-  }
-}
-
-/**
- * Handle keyup to deactivate
- */
-function handleKeyUp(event: KeyboardEvent): void {
-  if (!event.metaKey && !event.ctrlKey && !event.shiftKey) {
-    if (isFreeSelectActive && !isDrawing) {
-      deactivateFreeSelectDrag();
-    }
+  if (event.key === 'Escape' && isFreeSelectActive) {
+    deactivateFreeSelectDrag();
   }
 }
 
@@ -95,11 +73,12 @@ function handleKeyUp(event: KeyboardEvent): void {
 function handleMouseDown(event: MouseEvent): void {
   if (!isFreeSelectActive) return;
 
-  // Require modifier keys unless manually activated via toolbar
-  if (!isManuallyActivated && !((event.metaKey || event.ctrlKey) && event.shiftKey)) return;
-
   // Ignore clicks on our own UI elements
   if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
+
+  // If picker is shown, don't start new selection
+  // Let the click propagate to close the picker
+  if (document.getElementById('ai-devtools-intent-picker')) return;
 
   event.preventDefault();
   event.stopPropagation();
@@ -179,22 +158,96 @@ function removeSelection(): void {
 }
 
 /**
+ * Get region context for the picker UI
+ */
+function getRegionContext(rect: ElementRect) {
+  const domRect = new DOMRect(rect.left, rect.top, rect.width, rect.height);
+  const elements = getElementsInRegion(domRect);
+
+  // Count elements by tag
+  const tagCounts: Record<string, number> = {};
+  for (const el of elements) {
+    const tag = el.tagName.toLowerCase();
+    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+  }
+
+  // Sort by count descending, take top 6
+  const tagBreakdown = Object.entries(tagCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([tag, count]) => ({ tag, count }));
+
+  // Find common ancestor
+  const ancestor = findCommonAncestor(elements);
+  let ancestorLabel = '';
+  if (ancestor && ancestor !== document.body) {
+    const tag = ancestor.tagName.toLowerCase();
+    const id = ancestor.id ? `#${ancestor.id}` : '';
+    const cls = ancestor.classList.length > 0 ? `.${ancestor.classList[0]}` : '';
+    ancestorLabel = tag + id + cls;
+  }
+
+  // Find first heading as region title
+  const headingTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+  let title = '';
+  for (const el of elements) {
+    if (headingTags.includes(el.tagName.toLowerCase())) {
+      const text = el.textContent?.trim() || '';
+      if (text) {
+        title = text.length > 50 ? text.slice(0, 47) + '...' : text;
+        break;
+      }
+    }
+  }
+
+  // Collect interactive element labels (buttons, links)
+  const labels: string[] = [];
+  const seenLabels = new Set<string>();
+  for (const el of elements) {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'button' || tag === 'a' || el.getAttribute('role') === 'button') {
+      const text = el.textContent?.trim() || '';
+      if (text && text.length <= 30 && !seenLabels.has(text)) {
+        seenLabels.add(text);
+        labels.push(text);
+        if (labels.length >= 6) break;
+      }
+    }
+  }
+
+  return {
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+    elementCount: elements.length,
+    tagBreakdown,
+    ancestorLabel,
+    title,
+    labels,
+    pageUrl: window.location.hostname + window.location.pathname,
+  };
+}
+
+/**
  * Show intent picker for region selection using Shadow DOM
  */
 function showRegionIntentPicker(rect: ElementRect, x: number, y: number): void {
-  mountRegionPicker(
+  const context = getRegionContext(rect);
+
+  const { cleanup } = mountRegionPicker(
     x,
     y,
-    Math.round(rect.width),
-    Math.round(rect.height),
-    async (intent, note) => {
-      await selectRegion(rect, intent, note);
+    context,
+    async (intent, includeScreenshot) => {
+      pickerCleanup = null;
+      await selectRegion(rect, intent, includeScreenshot);
     },
     () => {
+      pickerCleanup = null;
       hideSelection();
       deactivateFreeSelectDrag();
     }
   );
+  pickerCleanup = cleanup;
 }
 
 /**
@@ -205,14 +258,14 @@ function showRegionIntentPicker(rect: ElementRect, x: number, y: number): void {
  * - fix: Include console errors, network failures (debugging context)
  * - beautify: Include screenshot and aesthetic analysis (visual context)
  */
-async function selectRegion(rect: ElementRect, intent: Intent, userNote?: string): Promise<void> {
+async function selectRegion(rect: ElementRect, intent: Intent, includeScreenshot: boolean): Promise<void> {
   // Get browser context only for fix intent
   const browserContext = intent === 'fix'
     ? await getBrowserContext()
     : { errors: [], networkFailures: [] };
 
-  // Capture screenshot only for beautify intent
-  const screenshot = intent === 'beautify'
+  // Capture screenshot if user opted in
+  const screenshot = includeScreenshot
     ? (await captureRegionScreenshot(rect) || '')
     : '';
 
@@ -243,7 +296,6 @@ async function selectRegion(rect: ElementRect, intent: Intent, userNote?: string
   const capture: FreeSelectCapture = {
     mode: 'free-select',
     intent,
-    userNote,
     timestamp: Date.now(),
     region: rect,
     screenshot,
@@ -413,17 +465,15 @@ function showRegionConfirmation(rect: ElementRect): void {
 
 /**
  * Activate free select drag mode
- * @param manual - If true, dragging works without holding Cmd+Shift
  */
-export function activateFreeSelectDrag(manual = false): void {
+export function activateFreeSelectDrag(): void {
   if (isFreeSelectActive) return;
 
   isFreeSelectActive = true;
-  isManuallyActivated = manual;
   document.body.style.cursor = 'crosshair';
   document.body.style.userSelect = 'none';
 
-  console.log('[Clueprint] Region select activated.', manual ? 'Drag to select.' : 'Cmd+Shift+Drag to select.');
+  console.log('[Clueprint] Region select activated. Drag to select.');
 }
 
 /**
@@ -433,10 +483,16 @@ export function deactivateFreeSelectDrag(): void {
   if (!isFreeSelectActive) return;
 
   isFreeSelectActive = false;
-  isManuallyActivated = false;
   isDrawing = false;
   document.body.style.cursor = '';
   document.body.style.userSelect = '';
+
+  // Properly cleanup picker (unmounts Svelte component and removes DOM)
+  if (pickerCleanup) {
+    pickerCleanup();
+    pickerCleanup = null;
+  }
+
   removeSelection();
 }
 
@@ -445,7 +501,6 @@ export function deactivateFreeSelectDrag(): void {
  */
 export function initFreeSelectMode(): void {
   document.addEventListener('keydown', handleKeyDown, true);
-  document.addEventListener('keyup', handleKeyUp, true);
   document.addEventListener('mousedown', handleMouseDown, true);
   document.addEventListener('mousemove', handleMouseMove, true);
   document.addEventListener('mouseup', handleMouseUp, true);
@@ -456,7 +511,6 @@ export function initFreeSelectMode(): void {
  */
 export function cleanupFreeSelectMode(): void {
   document.removeEventListener('keydown', handleKeyDown, true);
-  document.removeEventListener('keyup', handleKeyUp, true);
   document.removeEventListener('mousedown', handleMouseDown, true);
   document.removeEventListener('mousemove', handleMouseMove, true);
   document.removeEventListener('mouseup', handleMouseUp, true);
@@ -469,4 +523,14 @@ export function cleanupFreeSelectMode(): void {
  */
 export function isFreeSelectMode(): boolean {
   return isFreeSelectActive;
+}
+
+/**
+ * Toggle free select mode
+ */
+export function toggleFreeSelectDrag(): void {
+  if (isFreeSelectActive) {
+    deactivateFreeSelectDrag();
+  }
+  activateFreeSelectDrag();
 }

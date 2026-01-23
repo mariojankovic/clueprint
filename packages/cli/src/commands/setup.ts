@@ -110,7 +110,7 @@ function findProjectRoot(): string | null {
     if (existsSync(packageJson)) {
       try {
         const pkg = JSON.parse(readFileSync(packageJson, 'utf-8'));
-        if (pkg.name === 'ai-browser-devtools' || existsSync(join(dir, 'packages/chrome-extension'))) {
+        if (pkg.name === 'clueprint' || existsSync(join(dir, 'packages/chrome-extension'))) {
           return dir;
         }
       } catch {
@@ -185,7 +185,7 @@ async function configureMcp(projectRoot: string): Promise<boolean> {
   }
 
   const mcpServers = (config.mcpServers || {}) as Record<string, unknown>;
-  const existingClueprint = mcpServers['ai-browser-devtools'];
+  const existingClueprint = mcpServers['clueprint'];
 
   if (existingClueprint) {
     const shouldOverwrite = await p.confirm({
@@ -199,7 +199,7 @@ async function configureMcp(projectRoot: string): Promise<boolean> {
     }
   }
 
-  mcpServers['ai-browser-devtools'] = {
+  mcpServers['clueprint'] = {
     command: 'node',
     args: [mcpServerPath],
   };

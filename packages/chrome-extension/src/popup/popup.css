@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* Custom base styles for popup */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    width: 320px;
+    background: #000;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #fff;
+  }
+}

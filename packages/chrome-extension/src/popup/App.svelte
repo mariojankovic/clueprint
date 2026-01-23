@@ -1,10 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { MousePointerClick, SquareDashedMousePointer, Activity, Clapperboard, Layers, Eye, EyeOff } from 'lucide-svelte';
 
   // State
   let isActive = $state(false);
   let isRecording = $state(false);
   let mcpConnected = $state(false);
+  let widgetVisible = $state(true);
+  let isMac = $state(true);
 
   // Fetch status from background
   async function fetchStatus() {
@@ -25,45 +28,42 @@
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
-        await chrome.tabs.sendMessage(tab.id, message);
+        const response = await chrome.tabs.sendMessage(tab.id, message);
+        return response;
       }
     } catch (error) {
       console.warn('Failed to send message to tab:', error);
     }
   }
 
-  // Handlers
-  async function handleInspect() {
-    await sendToActiveTab({ type: 'ACTIVATE_INSPECT' });
-    window.close();
-  }
-
-  async function handleStartRecording() {
-    try {
-      await chrome.runtime.sendMessage({ type: 'START_RECORDING' });
-      isRecording = true;
-    } catch (error) {
-      console.error('Failed to start recording:', error);
+  // Toggle floating widget
+  async function toggleWidget() {
+    const response = await sendToActiveTab({ type: 'TOGGLE_WIDGET' });
+    if (response) {
+      widgetVisible = response.visible;
+    } else {
+      widgetVisible = !widgetVisible;
     }
   }
 
-  async function handleStopRecording() {
-    try {
-      await chrome.runtime.sendMessage({ type: 'STOP_RECORDING' });
-      isRecording = false;
-    } catch (error) {
-      console.error('Failed to stop recording:', error);
-    }
+  // Modifier key display
+  function mod() {
+    return isMac ? '⌘' : 'Ctrl+';
   }
 
-  async function handleDiagnostics() {
-    await sendToActiveTab({ type: 'GET_DIAGNOSTICS' });
-    window.close();
+  // Fetch widget visibility from content script
+  async function fetchWidgetState() {
+    const response = await sendToActiveTab({ type: 'GET_WIDGET_STATE' });
+    if (response && typeof response.visible === 'boolean') {
+      widgetVisible = response.visible;
+    }
   }
 
   // Listen for status updates
   onMount(() => {
+    isMac = navigator.platform.startsWith('Mac');
     fetchStatus();
+    fetchWidgetState();
 
     const listener = (message: any) => {
       if (message.type === 'STATUS_UPDATE') {
@@ -78,304 +78,104 @@
   });
 </script>
 
-<div class="container">
+<div class="w-[320px] flex flex-col px-5 pt-6 pb-5 bg-black text-white font-sans text-[13px]">
   <!-- Header -->
-  <header class="header">
-    <h1 class="logo">clueprint</h1>
-    <p class="tagline">browser visibility for AI</p>
+  <header class="text-center mb-5">
+    <h1 class="text-[28px] font-normal tracking-tight text-white mb-1" style="font-family: 'Fraunces', serif;">clueprint</h1>
+    <p class="text-xs font-normal text-white/40 tracking-wide">browser visibility for AI</p>
   </header>
 
   <!-- Status -->
-  <div class="status">
-    <div class="status-item">
-      <span class="dot" class:active={isActive} class:recording={isRecording}></span>
+  <div class="flex justify-center gap-5 py-3 mb-5 bg-white/[0.03] border border-white/[0.06] rounded-xl backdrop-blur-[20px]">
+    <div class="flex items-center gap-2 text-xs text-white/50">
+      <span
+        class="w-1.5 h-1.5 rounded-full transition-all duration-300 {isRecording ? 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)] animate-pulse' : isActive ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]' : 'bg-white/20'}"
+      ></span>
       <span>{isRecording ? 'Recording' : isActive ? 'Active' : 'Ready'}</span>
     </div>
-    <div class="status-item">
-      <span class="dot" class:active={mcpConnected}></span>
+    <div class="flex items-center gap-2 text-xs text-white/50">
+      <span
+        class="w-1.5 h-1.5 rounded-full transition-all duration-300 {mcpConnected ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]' : 'bg-white/20'}"
+      ></span>
       <span>MCP {mcpConnected ? 'connected' : 'waiting'}</span>
     </div>
   </div>
 
-  <!-- Actions -->
-  <div class="actions">
-    <button class="btn" onclick={handleInspect}>
-      <div class="btn-left">
-        <span class="btn-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M9 9l5 12 1.774-5.226L21 14 9 9z"/>
-            <path d="M16.071 16.071l4.243 4.243"/>
-            <path d="M7.188 2.239l.777 2.897M5.136 7.965l-2.897-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
-          </svg>
-        </span>
-        <span class="btn-label">Inspect Element</span>
-      </div>
-      <span class="btn-hint">⌥ Click</span>
-    </button>
-
-    {#if !isRecording}
-      <button class="btn" onclick={handleStartRecording}>
-        <div class="btn-left">
-          <span class="btn-icon record">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="12" r="7"/>
-            </svg>
+  <!-- Capabilities -->
+  <div class="mb-4">
+    <h2 class="text-[11px] font-medium text-white/30 uppercase tracking-wider mb-3">Ask your AI about</h2>
+    <div class="flex flex-col gap-1">
+      <div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
+        <div class="flex items-center gap-2.5">
+          <span class="flex items-center justify-center w-5 text-white/40">
+            <MousePointerClick size={14} strokeWidth={1.5} />
           </span>
-          <span class="btn-label">Start Recording</span>
+          <span class="text-white/70">Any element</span>
         </div>
-        <span class="btn-hint">Capture flow</span>
-      </button>
-    {:else}
-      <button class="btn recording" onclick={handleStopRecording}>
-        <div class="btn-left">
-          <span class="btn-icon stop">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2"/>
-            </svg>
-          </span>
-          <span class="btn-label">Stop Recording</span>
-        </div>
-        <span class="btn-hint">Send to AI</span>
-      </button>
-    {/if}
-
-    <button class="btn" onclick={handleDiagnostics}>
-      <div class="btn-left">
-        <span class="btn-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-          </svg>
-        </span>
-        <span class="btn-label">Page Diagnostics</span>
+        <kbd class="py-0.5 px-1.5 bg-white/[0.06] border border-white/10 rounded text-[10px] text-white/40 font-sans">{mod()}⇧S</kbd>
       </div>
-      <span class="btn-hint">Health check</span>
-    </button>
+
+      <div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
+        <div class="flex items-center gap-2.5">
+          <span class="flex items-center justify-center w-5 text-white/40">
+            <SquareDashedMousePointer size={14} strokeWidth={1.5} />
+          </span>
+          <span class="text-white/70">A screen region</span>
+        </div>
+        <kbd class="py-0.5 px-1.5 bg-white/[0.06] border border-white/10 rounded text-[10px] text-white/40 font-sans">{mod()}⇧X</kbd>
+      </div>
+
+      <div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
+        <div class="flex items-center gap-2.5">
+          <span class="flex items-center justify-center w-5 text-white/40">
+            <Activity size={14} strokeWidth={1.5} />
+          </span>
+          <span class="text-white/70">Page health & diagnostics</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
+        <div class="flex items-center gap-2.5">
+          <span class="flex items-center justify-center w-5 text-white/40">
+            <Clapperboard size={14} strokeWidth={1.5} />
+          </span>
+          <span class="text-white/70">A recorded user flow</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
+        <div class="flex items-center gap-2.5">
+          <span class="flex items-center justify-center w-5 text-white/40">
+            <Layers size={14} strokeWidth={1.5} />
+          </span>
+          <span class="text-white/70">DOM changes over time</span>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <!-- Shortcuts -->
-  <div class="shortcuts">
-    <div class="shortcut">
-      <span>Inspect</span>
-      <kbd>⌥ Click</kbd>
-    </div>
-    <div class="shortcut">
-      <span>Region</span>
-      <kbd>⌘⇧ Drag</kbd>
-    </div>
+  <!-- Widget Toggle -->
+  <div class="pt-3 border-t border-white/[0.06]">
+    <button
+      class="flex items-center justify-between w-full py-2.5 px-3 rounded-lg bg-transparent border-none text-white cursor-pointer transition-colors hover:bg-white/[0.05]"
+      onclick={toggleWidget}
+    >
+      <div class="flex items-center gap-2.5">
+        <span class="flex items-center justify-center w-5 text-white/40">
+          {#if widgetVisible}
+            <EyeOff size={14} strokeWidth={1.5} />
+          {:else}
+            <Eye size={14} strokeWidth={1.5} />
+          {/if}
+        </span>
+        <span class="text-[13px] text-white/70">{widgetVisible ? 'Hide' : 'Show'} floating toolbar</span>
+      </div>
+    </button>
   </div>
 
   <!-- Footer -->
-  <footer class="footer">
-    <p>Tell your AI: "check the element I selected"</p>
+  <footer class="text-center pt-3 mt-3 border-t border-white/[0.06]">
+    <p class="text-[11px] text-white/25 italic">Select something, then tell your AI about it</p>
   </footer>
 </div>
 
-<style>
-  :global(*) {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-  :global(body) {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 13px;
-    background: #000;
-    color: #fff;
-  }
-
-  .container {
-    min-height: 420px;
-    display: flex;
-    flex-direction: column;
-    padding: 24px 20px 20px;
-  }
-
-  /* Header */
-  .header {
-    text-align: center;
-    margin-bottom: 24px;
-  }
-
-  .logo {
-    font-family: 'Fraunces', Georgia, serif;
-    font-size: 28px;
-    font-weight: 400;
-    letter-spacing: -0.02em;
-    color: #fff;
-    margin-bottom: 4px;
-  }
-
-  .tagline {
-    font-size: 12px;
-    font-weight: 400;
-    color: rgba(255, 255, 255, 0.4);
-    letter-spacing: 0.02em;
-  }
-
-  /* Status */
-  .status {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    padding: 14px 0;
-    margin-bottom: 20px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-  }
-
-  .status-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    transition: all 0.3s ease;
-  }
-
-  .dot.active {
-    background: #4ade80;
-    box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
-  }
-
-  .dot.recording {
-    background: #f87171;
-    box-shadow: 0 0 8px rgba(248, 113, 113, 0.5);
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  /* Actions */
-  .actions {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    flex: 1;
-  }
-
-  .btn {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-    padding: 16px 18px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    color: #fff;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-  }
-
-  .btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.12);
-    transform: translateY(-1px);
-  }
-
-  .btn:active {
-    transform: translateY(0);
-  }
-
-  .btn.recording {
-    background: rgba(248, 113, 113, 0.1);
-    border-color: rgba(248, 113, 113, 0.2);
-  }
-
-  .btn.recording:hover {
-    background: rgba(248, 113, 113, 0.15);
-    border-color: rgba(248, 113, 113, 0.3);
-  }
-
-  .btn-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .btn-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .btn-icon svg {
-    color: inherit;
-  }
-
-  .btn-icon.record {
-    color: rgba(248, 113, 113, 0.8);
-  }
-
-  .btn-icon.stop {
-    color: #f87171;
-  }
-
-  .btn-label {
-    font-weight: 500;
-    font-size: 13px;
-  }
-
-  .btn-hint {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.35);
-  }
-
-  /* Shortcuts */
-  .shortcuts {
-    display: flex;
-    justify-content: center;
-    gap: 24px;
-    padding: 16px 0;
-    margin-top: 16px;
-  }
-
-  .shortcut {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.35);
-  }
-
-  kbd {
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    font-family: inherit;
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  /* Footer */
-  .footer {
-    text-align: center;
-    padding-top: 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    margin-top: auto;
-  }
-
-  .footer p {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.3);
-    font-style: italic;
-  }
-</style>

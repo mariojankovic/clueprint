@@ -55,6 +55,9 @@ function initialize(): void {
   // Listen for messages
   chrome.runtime.onMessage.addListener(handleMessage);
 
+  // Listen for keyboard commands
+  chrome.commands.onCommand.addListener(handleCommand);
+
   // Listen for tab updates
   chrome.tabs.onUpdated.addListener(handleTabUpdated);
 
@@ -333,6 +336,23 @@ function handleMessage(
   }
 
   return true; // Keep channel open for async responses
+}
+
+/**
+ * Handle keyboard commands
+ */
+async function handleCommand(command: string): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return;
+
+  switch (command) {
+    case 'toggle-inspect':
+      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_INSPECT' }).catch(() => {});
+      break;
+    case 'toggle-region':
+      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_REGION' }).catch(() => {});
+      break;
+  }
 }
 
 /**

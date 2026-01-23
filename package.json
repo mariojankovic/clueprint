@@ -1,5 +1,5 @@
 {
-  "name": "ai-browser-devtools",
+  "name": "clueprint",
   "version": "0.1.0",
   "private": true,
   "description": "Chrome extension + MCP server for AI-assisted browser debugging",

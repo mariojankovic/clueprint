@@ -118,7 +118,7 @@ function findProjectRoot(): string | null {
     if (existsSync(packageJson)) {
       try {
         const pkg = JSON.parse(readFileSync(packageJson, 'utf-8'));
-        if (pkg.name === 'ai-browser-devtools' || existsSync(join(dir, 'packages/chrome-extension'))) {
+        if (pkg.name === 'clueprint' || existsSync(join(dir, 'packages/chrome-extension'))) {
           return dir;
         }
       } catch {

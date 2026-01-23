@@ -4,10 +4,10 @@
  */
 
 chrome.devtools.panels.create(
-  'AI DevTools',
+  'Clueprint',
   '',
   'devtools/panel.html',
   (panel) => {
-    console.log('[AI DevTools] Panel created');
+    console.log('[Clueprint] Panel created');
   }
 );

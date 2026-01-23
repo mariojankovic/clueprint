@@ -7,6 +7,8 @@ const sveltePlugin = require('esbuild-svelte');
 const sveltePreprocess = require('svelte-preprocess');
 const fs = require('fs');
 const path = require('path');
+const postcss = require('postcss');
+const postcssLoadConfig = require('postcss-load-config');
 
 const isWatch = process.argv.includes('--watch');
 
@@ -19,6 +21,14 @@ function createSveltePlugin() {
     compilerOptions: {
       css: 'injected', // Inject CSS into component JS
     },
+    // Filter out Tailwind-related warnings (unused CSS selectors from utilities)
+    filterWarnings: (warning) => {
+      // Ignore unused CSS selector warnings (from Tailwind utilities)
+      if (warning.code === 'css_unused_selector') return false;
+      // Ignore quoted attribute warnings (Svelte 5 migration)
+      if (warning.code === 'attribute_quoted') return false;
+      return true;
+    },
   });
 }
 
@@ -26,6 +36,24 @@ function createSveltePlugin() {
 const distDir = path.join(__dirname, 'dist');
 if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
+}
+
+// Compile CSS with PostCSS/Tailwind
+async function compileCss(inputPath, outputPath) {
+  const css = fs.readFileSync(inputPath, 'utf8');
+  const { plugins, options } = await postcssLoadConfig({ cwd: __dirname });
+  const result = await postcss(plugins).process(css, {
+    ...options,
+    from: inputPath,
+    to: outputPath,
+  });
+
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+  fs.writeFileSync(outputPath, result.css);
+  console.log(`CSS compiled: ${path.relative(__dirname, outputPath)}`);
 }
 
 // Copy static files
@@ -118,6 +146,12 @@ async function build() {
       outfile: 'dist/background/index.js',
     });
 
+    // Popup CSS (Tailwind)
+    await compileCss(
+      path.join(__dirname, 'src/popup/popup.css'),
+      path.join(distDir, 'popup/popup.css')
+    );
+
     // Popup (Svelte)
     await esbuild.build({
       ...buildOptions,
@@ -136,12 +170,20 @@ async function build() {
       format: 'iife',
     });
 
-    // DevTools Panel
+    // DevTools Panel CSS (Tailwind)
+    await compileCss(
+      path.join(__dirname, 'src/devtools/panel.css'),
+      path.join(distDir, 'devtools/panel.css')
+    );
+
+    // DevTools Panel (Svelte)
     await esbuild.build({
       ...buildOptions,
       entryPoints: ['src/devtools/panel.ts'],
       outfile: 'dist/devtools/panel.js',
       format: 'iife',
+      plugins: [createSveltePlugin()],
+      conditions: ['svelte', 'browser'],
     });
 
     console.log('Build complete!');

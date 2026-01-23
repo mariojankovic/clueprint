@@ -7,55 +7,25 @@
 
   let { message, type = 'info', duration = 2500 }: Props = $props();
 
-  const accentColors = {
-    info: '#a5b4fc',
-    success: '#34d399',
-    warning: '#fbbf24',
+  const dotColors = {
+    info: 'bg-indigo-300',
+    success: 'bg-emerald-400',
+    warning: 'bg-amber-400',
   };
 
-  const accentColor = $derived(accentColors[type]);
+  const dotColor = $derived(dotColors[type]);
 </script>
 
-<div class="toast" style="--accent-color: {accentColor}">
-  <span class="dot"></span>
+<div class="bg-black/95 text-white py-3.5 px-5 rounded-2xl font-sans text-[13px] font-medium shadow-[0_16px_48px_rgba(0,0,0,0.5)] backdrop-blur-[32px] backdrop-saturate-200 border border-white/10 flex items-center gap-2.5 animate-[slideUp_0.2s_ease-out]">
+  <span class="w-2 h-2 rounded-full shrink-0 {dotColor}"></span>
   {message}
 </div>
 
 <style>
-  .toast {
-    background: rgba(0, 0, 0, 0.96);
-    color: #ffffff;
-    padding: 14px 20px;
-    border-radius: 16px;
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(32px) saturate(200%);
-    -webkit-backdrop-filter: blur(32px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    animation: slideUp 0.2s ease-out;
-  }
-
-  .dot {
-    width: 8px;
-    height: 8px;
-    background: var(--accent-color, #a5b4fc);
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
+  @import "tailwindcss";
 
   @keyframes slideUp {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 </style>

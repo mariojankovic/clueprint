@@ -7,6 +7,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import {
@@ -146,6 +148,22 @@ const TOOLS = [
       },
       required: ['before', 'after'],
     },
+  },
+];
+
+// Prompt definitions
+const PROMPTS = [
+  {
+    name: 'inspect',
+    description: 'Analyze the element or region selected in the browser',
+  },
+  {
+    name: 'audit',
+    description: 'Check the current page for errors, network failures, and performance issues',
+  },
+  {
+    name: 'recording',
+    description: 'Get and analyze the most recent flow recording from the browser',
   },
 ];
 
@@ -399,12 +417,13 @@ export async function createMCPServer(): Promise<void> {
   // Create MCP server
   const server = new Server(
     {
-      name: 'ai-browser-devtools',
+      name: 'clueprint',
       version: '0.1.0',
     },
     {
       capabilities: {
         tools: {},
+        prompts: {},
       },
     }
   );
@@ -418,6 +437,60 @@ export async function createMCPServer(): Promise<void> {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     return handleToolCall(name, args as Record<string, unknown>);
+  });
+
+  // Handle list prompts request
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    return { prompts: PROMPTS };
+  });
+
+  // Handle get prompt request
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const { name } = request.params;
+
+    switch (name) {
+      case 'inspect':
+        return {
+          messages: [
+            {
+              role: 'user' as const,
+              content: {
+                type: 'text' as const,
+                text: 'I selected something in the browser. Check if it\'s an element (Option+Click) or a region (Cmd+Shift+Drag) and analyze it. First try get_selected_element, and if it says the selection is a region, use get_selected_region instead. Describe what was selected and any issues you notice.',
+              },
+            },
+          ],
+        };
+
+      case 'audit':
+        return {
+          messages: [
+            {
+              role: 'user' as const,
+              content: {
+                type: 'text' as const,
+                text: 'Run a page audit using get_page_diagnostics (include warnings). Report any console errors, network failures, performance issues, or accessibility problems found on the current page.',
+              },
+            },
+          ],
+        };
+
+      case 'recording':
+        return {
+          messages: [
+            {
+              role: 'user' as const,
+              content: {
+                type: 'text' as const,
+                text: 'Get the most recent flow recording using get_flow_recording and analyze it. Summarize what actions were captured, any errors that occurred, and highlight anything notable.',
+              },
+            },
+          ],
+        };
+
+      default:
+        throw new Error(`Unknown prompt: ${name}`);
+    }
   });
 
   // Connect to stdio transport

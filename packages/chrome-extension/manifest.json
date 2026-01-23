@@ -44,6 +44,20 @@
         "mac": "Command+Shift+A"
       },
       "description": "Activate Clueprint"
+    },
+    "toggle-inspect": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Toggle element inspect mode"
+    },
+    "toggle-region": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+X",
+        "mac": "Command+Shift+X"
+      },
+      "description": "Toggle region select mode"
     }
   },
   "web_accessible_resources": [

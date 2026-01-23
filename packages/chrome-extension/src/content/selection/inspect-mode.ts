@@ -15,6 +15,8 @@ let currentHighlight: HTMLElement | null = null;
 let currentLabel: HTMLElement | null = null;
 let hoveredElement: Element | null = null;
 let lockedElement: Element | null = null; // Element locked for selection (when picker shown)
+let savedOverflow: string | null = null; // Saved body overflow for scroll lock
+let pickerCleanup: (() => void) | null = null; // Cleanup function for the current picker
 
 /**
  * Handle Option/Alt key press to activate inspect mode
@@ -121,6 +123,224 @@ function getElementDisplayName(element: Element): string {
   return `${name}  ${dims}`;
 }
 
+export interface ElementContext {
+  tag: string;
+  attrs: Array<{ name: string; value: string }>;
+  textContent: string;
+  parents: Array<{ label: string }>;
+  parentElements: Element[];
+  pageUrl: string;
+  childCount: number;
+  styles: Array<{ prop: string; value: string }>;
+}
+
+/**
+ * Extract element context for the picker UI
+ */
+function getElementContext(element: Element): ElementContext {
+  const { parents, elements } = getParentChain(element);
+  return {
+    tag: element.tagName.toLowerCase(),
+    attrs: getKeyAttributes(element),
+    textContent: getTextContent(element),
+    parents,
+    parentElements: elements,
+    pageUrl: window.location.hostname + window.location.pathname,
+    childCount: element.children.length,
+    styles: getSmartStyles(element),
+  };
+}
+
+/**
+ * Get key attributes for display
+ */
+function getKeyAttributes(element: Element): Array<{ name: string; value: string }> {
+  const attrs: Array<{ name: string; value: string }> = [];
+
+  if (element.id) attrs.push({ name: 'id', value: element.id });
+
+  const classes = Array.from(element.classList);
+  if (classes.length > 0) {
+    const classStr = classes.slice(0, 3).join(' ') + (classes.length > 3 ? ` +${classes.length - 3}` : '');
+    attrs.push({ name: 'class', value: classStr });
+  }
+
+  const functionalAttrs = ['type', 'href', 'src', 'role', 'name', 'placeholder', 'aria-label'];
+  for (const name of functionalAttrs) {
+    const val = element.getAttribute(name);
+    if (val) {
+      attrs.push({ name, value: val.length > 25 ? val.slice(0, 22) + '...' : val });
+    }
+  }
+
+  return attrs;
+}
+
+/**
+ * Get truncated text content
+ */
+function getTextContent(element: Element): string {
+  const text = element.textContent?.trim() || '';
+  if (!text) return '';
+  // Only show direct text, not deeply nested
+  const directText = Array.from(element.childNodes)
+    .filter(n => n.nodeType === Node.TEXT_NODE)
+    .map(n => n.textContent?.trim())
+    .filter(Boolean)
+    .join(' ');
+  const result = directText || text;
+  return result.length > 40 ? result.slice(0, 37) + '...' : result;
+}
+
+/**
+ * Get full parent chain (no depth limit) with element references
+ */
+function getParentChain(element: Element): { parents: Array<{ label: string }>; elements: Element[] } {
+  const parents: Array<{ label: string }> = [];
+  const elements: Element[] = [];
+  let current = element.parentElement;
+  while (current && current !== document.body && current !== document.documentElement) {
+    const tag = current.tagName.toLowerCase();
+    const id = current.id ? `#${current.id}` : '';
+    const cls = current.classList.length > 0 ? `.${current.classList[0]}` : '';
+    parents.unshift({ label: tag + id + cls });
+    elements.unshift(current);
+    current = current.parentElement;
+  }
+  return { parents, elements };
+}
+
+/**
+ * Extract smart/contextual computed styles based on element type
+ */
+function getSmartStyles(element: Element): Array<{ prop: string; value: string }> {
+  const computed = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  const styles: Array<{ prop: string; value: string }> = [];
+  const tag = element.tagName.toLowerCase();
+
+  const display = computed.display;
+  const position = computed.position;
+
+  // Always show display
+  styles.push({ prop: 'display', value: display });
+
+  // Flex-specific
+  if (display === 'flex' || display === 'inline-flex') {
+    if (computed.flexDirection !== 'row') styles.push({ prop: 'direction', value: computed.flexDirection });
+    if (computed.gap !== 'normal' && computed.gap !== '0px') styles.push({ prop: 'gap', value: computed.gap });
+    if (computed.alignItems !== 'normal') styles.push({ prop: 'align', value: computed.alignItems });
+    if (computed.justifyContent !== 'normal') styles.push({ prop: 'justify', value: computed.justifyContent });
+  }
+
+  // Grid-specific
+  if (display === 'grid' || display === 'inline-grid') {
+    if (computed.gridTemplateColumns !== 'none') {
+      const cols = computed.gridTemplateColumns;
+      styles.push({ prop: 'columns', value: cols.length > 30 ? cols.slice(0, 27) + '...' : cols });
+    }
+    if (computed.gap !== 'normal' && computed.gap !== '0px') styles.push({ prop: 'gap', value: computed.gap });
+  }
+
+  // Position-specific
+  if (position !== 'static') {
+    styles.push({ prop: 'position', value: position });
+    if (computed.zIndex !== 'auto') styles.push({ prop: 'z-index', value: computed.zIndex });
+  }
+
+  // Text-heavy elements
+  const textTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'label', 'li', 'td', 'th', 'button'];
+  if (textTags.includes(tag)) {
+    styles.push({ prop: 'font', value: `${computed.fontSize} / ${computed.fontWeight}` });
+    if (computed.color !== 'rgb(0, 0, 0)') styles.push({ prop: 'color', value: rgbToHex(computed.color) });
+    if (computed.lineHeight !== 'normal') styles.push({ prop: 'line-height', value: computed.lineHeight });
+  }
+
+  // Background (if set)
+  const bg = computed.backgroundColor;
+  if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+    styles.push({ prop: 'background', value: rgbToHex(bg) });
+  }
+
+  // Padding (if non-zero)
+  const padding = computed.padding;
+  if (padding && padding !== '0px') {
+    styles.push({ prop: 'padding', value: padding });
+  }
+
+  // Border-radius (if set)
+  const radius = computed.borderRadius;
+  if (radius && radius !== '0px') {
+    styles.push({ prop: 'radius', value: radius });
+  }
+
+  // Size
+  styles.push({ prop: 'size', value: `${Math.round(rect.width)} × ${Math.round(rect.height)}` });
+
+  // Cap at 8 properties
+  return styles.slice(0, 8);
+}
+
+/**
+ * Convert any CSS color value to hex
+ */
+function rgbToHex(color: string): string {
+  // Already hex
+  if (color.startsWith('#')) return color;
+
+  // rgb/rgba
+  const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (rgbMatch) {
+    const r = parseInt(rgbMatch[1]);
+    const g = parseInt(rgbMatch[2]);
+    const b = parseInt(rgbMatch[3]);
+    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+  }
+
+  // oklab(L a b) or oklab(L a b / alpha)
+  const oklabMatch = color.match(/oklab\(([\d.]+)\s+([-\d.]+)\s+([-\d.]+)/);
+  if (oklabMatch) {
+    const L = parseFloat(oklabMatch[1]);
+    const a = parseFloat(oklabMatch[2]);
+    const bVal = parseFloat(oklabMatch[3]);
+    return oklabToHex(L, a, bVal);
+  }
+
+  // oklch(L C H) or oklch(L C H / alpha)
+  const oklchMatch = color.match(/oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
+  if (oklchMatch) {
+    const L = parseFloat(oklchMatch[1]);
+    const C = parseFloat(oklchMatch[2]);
+    const H = parseFloat(oklchMatch[3]) * Math.PI / 180;
+    return oklabToHex(L, C * Math.cos(H), C * Math.sin(H));
+  }
+
+  return color;
+}
+
+/**
+ * Convert OKLab L,a,b to hex color
+ */
+function oklabToHex(L: number, a: number, b: number): string {
+  // OKLab to linear sRGB
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+
+  let r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  let g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  let bVal = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+
+  // Linear to sRGB
+  r = r <= 0.0031308 ? 12.92 * r : 1.055 * Math.pow(r, 1 / 2.4) - 0.055;
+  g = g <= 0.0031308 ? 12.92 * g : 1.055 * Math.pow(g, 1 / 2.4) - 0.055;
+  bVal = bVal <= 0.0031308 ? 12.92 * bVal : 1.055 * Math.pow(bVal, 1 / 2.4) - 0.055;
+
+  // Clamp and convert to hex
+  const toHex = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255))).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(bVal)}`;
+}
+
 /**
  * Update highlight position to match element
  */
@@ -180,6 +400,22 @@ function removeHighlight(): void {
 }
 
 /**
+ * Lock page scrolling (prevent highlight from drifting away from element)
+ */
+function lockScroll(): void {
+  savedOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Unlock page scrolling (restore previous overflow)
+ */
+function unlockScroll(): void {
+  document.body.style.overflow = savedOverflow || '';
+  savedOverflow = null;
+}
+
+/**
  * Handle mouse move during inspect mode
  */
 function handleMouseMove(event: MouseEvent): void {
@@ -209,6 +445,11 @@ function handleClick(event: MouseEvent): void {
   // Ignore our own UI elements
   if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
 
+  // If picker is already shown, don't select a new element
+  // Let the click propagate to the picker's click-outside handler
+  // Check both lockedElement and the DOM element for reliability
+  if (lockedElement || document.getElementById('ai-devtools-intent-picker')) return;
+
   event.preventDefault();
   event.stopPropagation();
 
@@ -226,6 +467,9 @@ function showIntentPicker(element: Element, x: number, y: number): void {
   // Lock the element - this prevents hover updates and stores the element for selection
   lockedElement = element;
 
+  // Lock scrolling to prevent highlight from drifting
+  lockScroll();
+
   // Remove mousemove listener entirely while picker is shown
   document.removeEventListener('mousemove', handleMouseMove, true);
 
@@ -234,20 +478,35 @@ function showIntentPicker(element: Element, x: number, y: number): void {
     currentLabel.style.display = 'none';
   }
 
-  const displayName = getElementDisplayName(element);
+  const context = getElementContext(element);
 
-  mountInspectPicker(
+  const handleChangeElement = (newElement: Element): ElementContext => {
+    lockedElement = newElement;
+    updateHighlight(newElement);
+    if (currentLabel) {
+      currentLabel.style.display = 'none';
+    }
+    return getElementContext(newElement);
+  };
+
+  const { cleanup } = mountInspectPicker(
     x,
     y,
-    displayName,
-    async (intent, instruction) => {
-      await selectElement(element, intent, instruction);
+    context,
+    async (intent) => {
+      pickerCleanup = null;
+      unlockScroll();
+      await selectElement(lockedElement!, intent);
     },
     () => {
+      pickerCleanup = null;
+      unlockScroll();
       lockedElement = null;
       deactivateInspectMode();
-    }
+    },
+    handleChangeElement
   );
+  pickerCleanup = cleanup;
 }
 
 /**
@@ -258,7 +517,7 @@ function showIntentPicker(element: Element, x: number, y: number): void {
  * - fix: Include console errors, network failures (debugging context)
  * - beautify: Include screenshot (visual context for styling)
  */
-async function selectElement(element: Element, intent: Intent, userInstruction?: string): Promise<void> {
+async function selectElement(element: Element, intent: Intent): Promise<void> {
   // Get browser context only for fix intent (console logs, network failures)
   const browserContext = intent === 'fix'
     ? await getBrowserContext()
@@ -276,7 +535,6 @@ async function selectElement(element: Element, intent: Intent, userInstruction?:
   const fullCapture: InspectCapture = {
     ...capture,
     screenshot,
-    userInstruction,
   };
 
   // Send to background script
@@ -285,8 +543,8 @@ async function selectElement(element: Element, intent: Intent, userInstruction?:
     payload: fullCapture,
   });
 
-  // Show confirmation with instruction feedback
-  showSelectionConfirmation(element, userInstruction);
+  // Show confirmation
+  showSelectionConfirmation(element);
 
   // Deactivate inspect mode
   deactivateInspectMode();
@@ -309,18 +567,9 @@ async function getBrowserContext(): Promise<BrowserContext> {
 /**
  * Show confirmation that element was selected
  */
-function showSelectionConfirmation(element: Element, userInstruction?: string): void {
+function showSelectionConfirmation(element: Element): void {
   const rect = element.getBoundingClientRect();
-
-  let message: string;
-  if (userInstruction) {
-    const truncated = userInstruction.length > 40 ? userInstruction.slice(0, 40) + '...' : userInstruction;
-    message = `✓ Captured with instruction: <strong>"${truncated}"</strong>`;
-  } else {
-    message = '✓ Element captured! Tell your AI assistant.';
-  }
-
-  showConfirmation(rect.left, rect.top - 30, message);
+  showConfirmation(rect.left, rect.top - 30, '✓ Element captured');
 }
 
 /**
@@ -352,6 +601,17 @@ export function deactivateInspectMode(): void {
   isManuallyActivated = false;
   lockedElement = null;
 
+  // Ensure scroll is unlocked
+  if (savedOverflow !== null) {
+    unlockScroll();
+  }
+
+  // Properly cleanup picker (unmounts Svelte component and removes DOM)
+  if (pickerCleanup) {
+    pickerCleanup();
+    pickerCleanup = null;
+  }
+
   document.removeEventListener('mousemove', handleMouseMove, true);
   document.removeEventListener('click', handleClick, true);
 
@@ -370,9 +630,8 @@ export function deactivateInspectMode(): void {
 export function toggleInspectMode(): void {
   if (isInspectModeActive) {
     deactivateInspectMode();
-  } else {
-    activateInspectMode();
   }
+  activateInspectMode(true);
 }
 
 /**
@@ -402,4 +661,5 @@ export function cleanupInspectMode(): void {
   deactivateInspectMode();
   isOptionKeyHeld = false;
   lockedElement = null;
+  pickerCleanup = null;
 }

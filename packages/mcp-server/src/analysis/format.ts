@@ -19,15 +19,9 @@ export function formatElementReport(capture: InspectCapture): string {
   // Header
   lines.push(`ELEMENT: ${el.tag}${el.id ? '#' + el.id : ''}${el.classes.length ? '.' + el.classes.slice(0, 2).join('.') : ''}`);
   lines.push('━'.repeat(56));
+  lines.push(`BUILD: 2026-01-22T21:20:00Z`); // Build timestamp for cache verification
 
-  // User instruction - display prominently if provided
-  if (capture.userInstruction) {
-    lines.push('');
-    lines.push(`🎯 USER REQUEST: "${capture.userInstruction}"`);
-    lines.push('');
-  } else {
-    lines.push('');
-  }
+  lines.push('');
 
   // Basic info
   lines.push(`SELECTOR: ${el.selector}`);
@@ -35,6 +29,35 @@ export function formatElementReport(capture: InspectCapture): string {
   if (el.classes.length > 0) {
     lines.push(`CLASSES: ${el.classes.join(', ')}`);
   }
+
+  // Text content
+  lines.push(`TEXT: "${el.text || '(empty)'}"`);
+
+  // Debug: show raw attributes
+  lines.push(`DEBUG attrs: ${JSON.stringify(el.attributes || {}).slice(0, 100)}`);
+
+  // Attributes (data-*, aria-*, role, etc.)
+  const importantAttrs = Object.entries(el.attributes || {}).filter(([key]) =>
+    key.startsWith('data-') ||
+    key.startsWith('aria-') ||
+    ['role', 'href', 'src', 'type', 'name', 'value', 'placeholder', 'title', 'alt'].includes(key)
+  );
+  if (importantAttrs.length > 0) {
+    lines.push(`ATTRIBUTES:`);
+    for (const [key, value] of importantAttrs.slice(0, 10)) {
+      const displayValue = value.length > 50 ? value.slice(0, 50) + '...' : value;
+      lines.push(`  ${key}: ${displayValue}`);
+    }
+  }
+
+  // Accessibility info
+  const role = el.attributes?.role || getImplicitRole(el.tag);
+  const ariaLabel = el.attributes?.['aria-label'];
+  const ariaDescribedby = el.attributes?.['aria-describedby'];
+  if (role || ariaLabel) {
+    lines.push(`ACCESSIBILITY: role="${role || 'none'}"${ariaLabel ? `, label="${ariaLabel}"` : ''}${ariaDescribedby ? `, describedby="${ariaDescribedby}"` : ''}`);
+  }
+
   lines.push('');
 
   // Styles
@@ -138,9 +161,6 @@ export function formatRegionReport(capture: FreeSelectCapture): string {
 
   // Intent
   lines.push(`INTENT: ${capture.intent.toUpperCase()}`);
-  if (capture.userNote) {
-    lines.push(`NOTE: "${capture.userNote}"`);
-  }
   lines.push('');
 
   // Elements
@@ -531,5 +551,38 @@ function getEventEmoji(type: string): string {
     mouse_move: '🔍',
   };
   return emojis[type] || '•';
+}
+
+/**
+ * Get implicit ARIA role for HTML element
+ */
+function getImplicitRole(tag: string): string | null {
+  const roleMap: Record<string, string> = {
+    a: 'link',
+    button: 'button',
+    input: 'textbox',
+    select: 'combobox',
+    textarea: 'textbox',
+    img: 'img',
+    nav: 'navigation',
+    main: 'main',
+    header: 'banner',
+    footer: 'contentinfo',
+    aside: 'complementary',
+    article: 'article',
+    section: 'region',
+    form: 'form',
+    table: 'table',
+    ul: 'list',
+    ol: 'list',
+    li: 'listitem',
+    h1: 'heading',
+    h2: 'heading',
+    h3: 'heading',
+    h4: 'heading',
+    h5: 'heading',
+    h6: 'heading',
+  };
+  return roleMap[tag] || null;
 }
 

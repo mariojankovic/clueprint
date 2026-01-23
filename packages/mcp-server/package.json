@@ -1,11 +1,11 @@
 {
-  "name": "@anthropic/ai-browser-devtools",
+  "name": "@anthropic/clueprint",
   "version": "0.1.0",
   "description": "MCP server for AI Browser DevTools - gives AI coding assistants deep browser visibility",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "ai-browser-devtools": "./dist/index.js"
+    "clueprint": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",

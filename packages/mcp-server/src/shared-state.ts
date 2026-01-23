@@ -8,7 +8,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import type { InspectCapture, FreeSelectCapture, FlowRecording } from './types/index.js';
 
-const STATE_DIR = join(tmpdir(), 'ai-browser-devtools');
+const STATE_DIR = join(tmpdir(), 'clueprint');
 const SELECTION_FILE = join(STATE_DIR, 'current-selection.json');
 const RECORDING_FILE = join(STATE_DIR, 'current-recording.json');
 const RECORDING_STATE_FILE = join(STATE_DIR, 'is-recording.json');
