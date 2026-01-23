@@ -36,42 +36,28 @@ import type { InspectCapture, FreeSelectCapture } from './types/index.js';
 // Tool definitions
 const TOOLS = [
   {
-    name: 'get_selected_element',
-    description: 'Get detailed information about an element the user selected in the browser via Option+Click. Includes element styles, parent context, sibling comparison, and relevant browser errors. Call this when the user mentions selecting, inspecting, or clicking on an element.',
+    name: 'inspect',
+    description: 'Get detailed information about what the user selected in the browser — either a single element (via Option+Click) or a region (via Cmd+Shift+Drag). Auto-detects the selection type. Call when the user says "clueprint inspect", mentions selecting/inspecting an element, or clicking on something in the browser.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         includeScreenshot: {
           type: 'boolean',
           default: false,
-          description: 'Include a screenshot of the element (adds ~20KB)',
+          description: 'Include a screenshot (always included for region selections)',
         },
         cssDetail: {
           type: 'number',
           enum: [0, 1, 2, 3],
           default: 1,
-          description: 'CSS detail level: 0=none, 1=layout+visual, 2=+typography, 3=full computed',
+          description: 'CSS detail level for element selections: 0=none, 1=layout+visual, 2=+typography, 3=full computed',
         },
       },
     },
   },
   {
-    name: 'get_selected_region',
-    description: 'Get information about a region the user selected via free-select (Cmd+Shift+Drag). Includes screenshot, elements in region, and aesthetic analysis. Call when user mentions selecting an area, region, or multiple elements.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        includeAestheticAnalysis: {
-          type: 'boolean',
-          default: true,
-          description: 'Include analysis of visual issues and suggestions',
-        },
-      },
-    },
-  },
-  {
-    name: 'get_page_diagnostics',
-    description: 'Get current page diagnostics including console errors, network failures, performance metrics, and accessibility issues. Call when user asks what\'s wrong with the page or wants a health check.',
+    name: 'audit',
+    description: 'Get current page diagnostics including console errors, network failures, performance metrics, and accessibility issues. Call when the user says "clueprint audit", asks what\'s wrong with the page, or wants a health/error check.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -111,8 +97,8 @@ const TOOLS = [
     },
   },
   {
-    name: 'get_flow_recording',
-    description: 'Get the most recent flow recording. Call after user has stopped a recording.',
+    name: 'recording',
+    description: 'Get the most recent flow recording. Call when the user says "clueprint recording" or asks about what was recorded.',
     inputSchema: {
       type: 'object' as const,
       properties: {},
@@ -213,22 +199,22 @@ async function handleToolCall(name: string, args: Record<string, unknown>) {
   }
 
   switch (name) {
-    case 'get_selected_element': {
+    case 'inspect': {
       const selection = getCurrentSelection();
 
       if (!selection) {
         return errorResponse(
-          'No element selected. To select an element:\n' +
+          'Nothing selected. To select:\n' +
           '1. Hold Option (Alt on Windows) and click any element, or\n' +
           '2. Use Cmd+Shift+Drag to select a region\n' +
-          '3. Then tell me "I selected an element"'
+          '3. Then say "clueprint inspect"'
         );
       }
 
-      if (selection.mode !== 'inspect') {
-        return errorResponse(
-          'Current selection is a region, not an element. Use get_selected_region instead.'
-        );
+      if (selection.mode === 'free-select') {
+        const capture = selection as FreeSelectCapture;
+        const report = formatRegionReport(capture);
+        return textResponse(report, capture.screenshot);
       }
 
       const capture = selection as InspectCapture;
@@ -248,32 +234,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>) {
       );
     }
 
-    case 'get_selected_region': {
-      const selection = getCurrentSelection();
-
-      if (!selection) {
-        return errorResponse(
-          'No region selected. To select a region:\n' +
-          '1. Hold Cmd+Shift (Ctrl+Shift on Windows) and drag to select\n' +
-          '2. Choose an intent (Fix or Beautify)\n' +
-          '3. Then tell me "I selected a region"'
-        );
-      }
-
-      if (selection.mode !== 'free-select') {
-        return errorResponse(
-          'Current selection is an element, not a region. Use get_selected_element instead.'
-        );
-      }
-
-      const capture = selection as FreeSelectCapture;
-      const report = formatRegionReport(capture);
-
-      // Always include screenshot for regions
-      return textResponse(report, capture.screenshot);
-    }
-
-    case 'get_page_diagnostics': {
+    case 'audit': {
       try {
         const diagnostics = await requestDiagnostics();
         const report = formatDiagnosticsReport(diagnostics);
@@ -320,7 +281,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>) {
       }
     }
 
-    case 'get_flow_recording': {
+    case 'recording': {
       const recording = getCurrentRecording();
 
       if (!recording) {
@@ -456,7 +417,7 @@ export async function createMCPServer(): Promise<void> {
               role: 'user' as const,
               content: {
                 type: 'text' as const,
-                text: 'I selected something in the browser. Check if it\'s an element (Option+Click) or a region (Cmd+Shift+Drag) and analyze it. First try get_selected_element, and if it says the selection is a region, use get_selected_region instead. Describe what was selected and any issues you notice.',
+                text: 'I selected something in the browser. Use the inspect tool to get details about my selection (it auto-detects element vs region). Describe what was selected and any issues you notice.',
               },
             },
           ],
@@ -469,7 +430,7 @@ export async function createMCPServer(): Promise<void> {
               role: 'user' as const,
               content: {
                 type: 'text' as const,
-                text: 'Run a page audit using get_page_diagnostics (include warnings). Report any console errors, network failures, performance issues, or accessibility problems found on the current page.',
+                text: 'Run a page audit using the audit tool (include warnings). Report any console errors, network failures, performance issues, or accessibility problems found on the current page.',
               },
             },
           ],
@@ -482,7 +443,7 @@ export async function createMCPServer(): Promise<void> {
               role: 'user' as const,
               content: {
                 type: 'text' as const,
-                text: 'Get the most recent flow recording using get_flow_recording and analyze it. Summarize what actions were captured, any errors that occurred, and highlight anything notable.',
+                text: 'Get the most recent flow recording using the recording tool and analyze it. Summarize what actions were captured, any errors that occurred, and highlight anything notable.',
               },
             },
           ],
