@@ -1,110 +1,86 @@
-# Clueprint
+<p align="center">
+  <img src="assets/logo.png" alt="clueprint" width="260" />
+</p>
 
-Browser visibility for AI assistants. Select elements or regions to capture context and share with your AI coding assistant (Claude Code, Cursor, etc.)
+<p align="center">
+  <a href="https://www.npmjs.com/package/clueprint"><img src="https://img.shields.io/npm/v/clueprint.svg?style=flat-square&color=7c3aed" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/clueprint"><img src="https://img.shields.io/npm/dm/clueprint.svg?style=flat-square&color=06b6d4" alt="npm downloads" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-94a3b8.svg?style=flat-square" alt="license" /></a>
+</p>
 
-## Quick Start
+<p align="center">
+  Give your AI coding assistant eyes on the browser.<br/>
+  Select elements, capture regions, record flows — all visible to Claude via MCP.
+</p>
+
+---
+
+## Install
 
 ```bash
-# Clone the repo
-git clone https://github.com/yourusername/clueprint.git
-cd clueprint
-
-# Run setup
 npx clueprint setup
 ```
 
-The setup wizard will:
-1. Install dependencies
-2. Build the Chrome extension
-3. Build the MCP server
-4. Configure Claude Code integration
+The setup wizard builds the Chrome extension, configures the MCP server, and connects everything to Claude Code. Follow the on-screen instructions to load the extension.
 
-Then follow the on-screen instructions to load the extension in Chrome.
+## What it does
 
-## What is Clueprint?
+Instead of describing what you see or copy-pasting HTML, clueprint lets your AI assistant observe the browser directly:
 
-Clueprint gives AI assistants visibility into your browser. Instead of describing what you see or copy-pasting HTML, you can:
+| Action                      | What gets captured                                                                |
+| --------------------------- | --------------------------------------------------------------------------------- |
+| **Option+Click** an element | Tag, classes, attributes, computed styles, parent context, related console errors |
+| **Cmd+Shift+Drag** a region | Screenshot, all elements within bounds, DOM structure, visual analysis            |
+| **Record a flow**           | Clicks, scrolls, inputs, network requests, console errors, layout shifts          |
+| **Run an audit**            | Console errors, network failures, performance metrics, accessibility issues       |
 
-- **Option+Click** any element to capture its details, styles, and context
-- **Cmd+Shift+Drag** (Mac) / **Ctrl+Shift+Drag** (Windows) to select a region
-- **Record flows** to capture user interactions, network requests, and console errors
-- **Ask Claude** about what's happening in the browser
+All data flows through [MCP](https://modelcontextprotocol.io) so any compatible assistant can access it.
 
-The captured data is sent to Claude via MCP (Model Context Protocol), so Claude can see exactly what you're looking at.
+## How it works
 
-## Features
-
-### Element Selection (Option+Click)
-Hold Option (Alt on Windows) and click any element to capture:
-- Element details (tag, classes, attributes)
-- Computed styles (layout, spacing, colors)
-- Parent context and siblings
-- Console errors related to this element
-- Network failures
-
-### Region Selection (Cmd+Shift+Drag)
-Hold Cmd+Shift and drag to select a region:
-- Screenshot of the selected area
-- All elements within the region
-- DOM structure
-- Aesthetic analysis (colors, typography, spacing)
-
-### Flow Recording
-Record user interactions to debug issues:
-- Clicks, scrolls, inputs
-- Network requests and errors
-- Console logs and errors
-- Layout shifts
-
-## CLI Commands
-
-```bash
-# Full setup (install, build, configure MCP)
-npx clueprint setup
-
-# Check installation status
-npx clueprint status
-
-# Start MCP server manually
-npx clueprint start
+```
+┌─────────────┐       WebSocket       ┌────────────┐       MCP        ┌─────────────┐
+│   Chrome    │ ◄──────────────────► │  MCP       │ ◄──────────────► │  Claude     │
+│  Extension  │                       │  Server    │                   │  Code       │
+└─────────────┘                       └────────────┘                   └─────────────┘
+ Captures DOM,                         Exposes tools                    Calls tools to
+ styles, network,                      for browser                      understand what
+ console, screenshots                  visibility                       you're seeing
 ```
 
-## Manual Installation
-
-If you prefer manual setup:
-
-### 1. Install Dependencies
+## CLI
 
 ```bash
-pnpm install
+npx clueprint setup    # build extension + configure MCP
+npx clueprint status   # check installation health
+npx clueprint start    # start MCP server manually
 ```
 
-### 2. Build
+## Manual setup
+
+<details>
+<summary>If you prefer to configure things yourself</summary>
+
+### Build
 
 ```bash
-# Build everything
-pnpm run build
-
-# Or build individually
-pnpm run build:extension
-pnpm run build:server
+pnpm install && pnpm run build
 ```
 
-### 3. Load Chrome Extension
+### Load the extension
 
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable **Developer mode** (toggle in top right)
-3. Click **Load unpacked**
-4. Select `packages/chrome-extension/dist`
+1. Open `chrome://extensions/`
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select `packages/chrome-extension/dist`
 
-### 4. Configure Claude Code MCP
+### Configure MCP
 
-Add to your `~/.claude/claude_desktop_config.json`:
+Add to your Claude Code MCP config:
 
 ```json
 {
   "mcpServers": {
-    "ai-browser-devtools": {
+    "clueprint": {
       "command": "node",
       "args": ["/path/to/clueprint/packages/mcp-server/dist/index.js"]
     }
@@ -112,61 +88,23 @@ Add to your `~/.claude/claude_desktop_config.json`:
 }
 ```
 
-Then restart Claude Code.
+</details>
 
 ## Development
 
 ```bash
-# Watch mode for extension
-cd packages/chrome-extension
-pnpm run watch
+# Watch extension
+cd packages/chrome-extension && pnpm run watch
 
-# Watch mode for MCP server
-cd packages/mcp-server
-pnpm run dev
+# Watch MCP server
+cd packages/mcp-server && pnpm run dev
 ```
-
-After changes, refresh the extension in `chrome://extensions/`.
-
-## Project Structure
-
-```
-packages/
-├── chrome-extension/     # Chrome extension (content script, popup, background)
-│   ├── src/
-│   │   ├── background/   # Service worker
-│   │   ├── content/      # Injected into pages
-│   │   │   ├── capture/  # DOM and screenshot capture
-│   │   │   ├── monitoring/  # Console, network, performance
-│   │   │   └── selection/   # Inspect and region select modes
-│   │   ├── popup/        # Extension popup (Svelte)
-│   │   └── types/        # TypeScript types
-│   └── dist/             # Built extension (load this in Chrome)
-│
-├── mcp-server/           # MCP server for Claude integration
-│   ├── src/
-│   │   ├── tools/        # MCP tool handlers
-│   │   └── analysis/     # Report formatting
-│   └── dist/             # Built server
-│
-└── cli/                  # Setup CLI
-    └── src/
-        └── commands/     # setup, status, start
-```
-
-## How It Works
-
-1. **Chrome Extension** runs on every page, monitoring console errors, network requests, and enabling element selection
-2. **Extension Background** maintains a WebSocket connection to the MCP server
-3. **MCP Server** exposes tools that Claude can call to get browser data
-4. **Claude Code** calls these tools when you ask questions about what's in the browser
 
 ## Requirements
 
 - Node.js 18+
-- pnpm
-- Chrome browser
-- Claude Code (or any MCP-compatible AI assistant)
+- Chrome
+- Claude Code (or any MCP-compatible assistant)
 
 ## License
 

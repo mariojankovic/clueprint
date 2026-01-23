@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { spawn } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
@@ -18,11 +18,16 @@ export async function setup(options: SetupOptions): Promise<void> {
 
   const projectRoot = findProjectRoot();
 
-  if (!projectRoot) {
-    p.cancel('Could not find Clueprint project. Run from the project directory.');
-    process.exit(1);
+  if (projectRoot) {
+    await setupLocal(projectRoot, options);
+  } else {
+    await setupFromNpm(options);
   }
+}
 
+// --- Local dev mode (inside cloned repo) ---
+
+async function setupLocal(projectRoot: string, options: SetupOptions): Promise<void> {
   // Step 1: Install dependencies
   const depsSpinner = p.spinner();
   depsSpinner.start('Installing dependencies...');
@@ -57,7 +62,8 @@ export async function setup(options: SetupOptions): Promise<void> {
 
   // Step 3: Configure MCP for Claude Code
   if (!options.skipMcp) {
-    await configureMcp(projectRoot);
+    const mcpServerPath = join(projectRoot, 'packages/mcp-server/dist/index.js');
+    await configureMcp(mcpServerPath);
   } else {
     p.log.info('Skipping MCP configuration (--skip-mcp flag)');
   }
@@ -102,6 +108,87 @@ export async function setup(options: SetupOptions): Promise<void> {
   p.outro(pc.green('Setup complete! Happy debugging ') + pc.cyan(''));
 }
 
+// --- npm mode (installed via npx @clueprint/mcp setup) ---
+
+async function setupFromNpm(options: SetupOptions): Promise<void> {
+  const clueprintDir = join(homedir(), '.clueprint');
+
+  // Resolve bundled assets relative to CLI location
+  // In the published package: cli/commands/setup.js → ../server/ and ../extension/
+  const packageRoot = join(__dirname, '..', '..');
+  const bundledServer = join(packageRoot, 'server');
+  const bundledExtension = join(packageRoot, 'extension');
+
+  // Verify bundled assets exist
+  if (!existsSync(bundledServer) || !existsSync(bundledExtension)) {
+    p.cancel('Bundled assets not found. The package may be corrupted.');
+    process.exit(1);
+  }
+
+  // Step 1: Copy extension to ~/.clueprint/extension/
+  const copySpinner = p.spinner();
+  copySpinner.start('Installing Clueprint...');
+
+  try {
+    mkdirSync(clueprintDir, { recursive: true });
+
+    cpSync(bundledExtension, join(clueprintDir, 'extension'), { recursive: true });
+    copySpinner.message('Extension installed...');
+
+    cpSync(bundledServer, join(clueprintDir, 'server'), { recursive: true });
+    copySpinner.stop('Clueprint installed');
+  } catch (error) {
+    copySpinner.stop('Installation failed');
+    p.log.error(`Could not copy files to ${clueprintDir}`);
+    process.exit(1);
+  }
+
+  // Step 2: Configure MCP for Claude Code
+  if (!options.skipMcp) {
+    const mcpServerPath = join(clueprintDir, 'server', 'index.js');
+    await configureMcp(mcpServerPath);
+  } else {
+    p.log.info('Skipping MCP configuration (--skip-mcp flag)');
+  }
+
+  // Step 3: Verify
+  const verifySpinner = p.spinner();
+  verifySpinner.start('Verifying installation...');
+
+  const issues: string[] = [];
+  if (!existsSync(join(clueprintDir, 'extension', 'manifest.json'))) {
+    issues.push('Extension not installed correctly');
+  }
+  if (!existsSync(join(clueprintDir, 'server', 'index.js'))) {
+    issues.push('MCP server not installed correctly');
+  }
+
+  if (issues.length === 0) {
+    verifySpinner.stop('Installation verified');
+  } else {
+    verifySpinner.stop('Installation incomplete');
+    issues.forEach(issue => p.log.warn(issue));
+  }
+
+  // Print completion message
+  const extensionPath = join(clueprintDir, 'extension');
+
+  p.note(
+    `${pc.bold('Load the Chrome extension:')}\n` +
+    `  ${pc.dim('1.')} Open ${pc.cyan('chrome://extensions/')}\n` +
+    `  ${pc.dim('2.')} Enable ${pc.cyan('Developer mode')}\n` +
+    `  ${pc.dim('3.')} Click ${pc.cyan('Load unpacked')}\n` +
+    `  ${pc.dim('4.')} Select:\n` +
+    `     ${pc.dim(extensionPath)}\n\n` +
+    `${pc.bold('Then restart Claude Code')} to load the MCP server`,
+    'Next steps'
+  );
+
+  p.outro(pc.green('Setup complete! Happy debugging ') + pc.cyan(''));
+}
+
+// --- Shared utilities ---
+
 function findProjectRoot(): string | null {
   let dir = process.cwd();
 
@@ -118,11 +205,6 @@ function findProjectRoot(): string | null {
       }
     }
     dir = dirname(dir);
-  }
-
-  const globalRoot = join(__dirname, '../../../../..');
-  if (existsSync(join(globalRoot, 'packages/chrome-extension'))) {
-    return globalRoot;
   }
 
   return null;
@@ -154,10 +236,9 @@ function runCommand(command: string, args: string[], options: { cwd: string }): 
   });
 }
 
-async function configureMcp(projectRoot: string): Promise<boolean> {
+async function configureMcp(mcpServerPath: string): Promise<boolean> {
   const claudeConfigDir = join(homedir(), '.claude');
   const claudeSettingsPath = join(claudeConfigDir, 'claude_desktop_config.json');
-  const mcpServerPath = join(projectRoot, 'packages/mcp-server/dist/index.js');
 
   // Check if Claude Code config exists
   if (!existsSync(claudeConfigDir)) {

@@ -7,7 +7,7 @@ module.exports = {
     extend: {
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        serif: ['Fraunces', 'Georgia', 'serif'],
+        display: ['Stack Sans Notch', 'Inter', 'sans-serif'],
         mono: ['SF Mono', 'Monaco', 'Cascadia Code', 'monospace'],
       },
     },

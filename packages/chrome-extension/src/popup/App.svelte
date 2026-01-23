@@ -92,7 +92,7 @@
 <div class="w-[320px] flex flex-col px-5 pt-6 pb-5 bg-black text-white font-sans text-[13px]">
   <!-- Header -->
   <header class="text-center mb-5">
-    <h1 class="text-[28px] font-normal tracking-tight text-white mb-1" style="font-family: 'Fraunces', serif;">clueprint</h1>
+    <h1 class="text-[28px] font-normal tracking-tight text-white mb-1" style="font-family: 'Stack Sans Notch', sans-serif;">clueprint</h1>
     <p class="text-xs font-normal text-white/40 tracking-wide">From clueless to flawless</p>
   </header>
 

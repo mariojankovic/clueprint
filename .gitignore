@@ -32,3 +32,6 @@ npm-debug.log*
 *.crx
 *.pem
 *.zip
+
+# Publish output
+publish/

@@ -128,7 +128,7 @@
 <div class="min-h-screen bg-black text-white font-['Inter',sans-serif] text-xs p-4">
   <!-- Header -->
   <header class="flex justify-between items-center mb-4">
-    <h1 class="text-lg font-normal text-white/90 font-['Fraunces',serif]">clueprint</h1>
+    <h1 class="text-lg font-normal text-white/90" style="font-family: 'Stack Sans Notch', sans-serif;">clueprint</h1>
     <div class="flex items-center gap-2">
       <div
         class="flex items-center gap-1.5 py-1.5 px-3 rounded-full text-[11px] border {mcpConnected ? 'border-green-500/20 bg-green-500/10 text-green-400' : 'border-red-500/20 bg-red-500/10 text-red-400'}"
