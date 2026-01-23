@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cpSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'fs';
+import { cpSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
@@ -31,6 +31,13 @@ cpSync(join(root, 'packages/cli/dist'), join(publishDir, 'cli'), { recursive: tr
 cpSync(join(root, 'packages/mcp-server/dist'), join(publishDir, 'server'), { recursive: true });
 cpSync(join(root, 'packages/chrome-extension/dist'), join(publishDir, 'extension'), { recursive: true });
 
+// Rename server to .cjs (package has "type": "module" for CLI, but server is CJS bundle)
+const serverSrc = join(publishDir, 'server', 'index.js');
+const serverDest = join(publishDir, 'server', 'index.cjs');
+const serverContent = readFileSync(serverSrc, 'utf-8');
+writeFileSync(serverDest, serverContent);
+rmSync(serverSrc);
+
 // Copy README and assets
 cpSync(join(root, 'README.md'), join(publishDir, 'README.md'));
 cpSync(join(root, 'assets'), join(publishDir, 'assets'), { recursive: true });
@@ -47,7 +54,8 @@ const packageJson = {
   description: 'Browser visibility for AI assistants — MCP server + Chrome extension',
   type: 'module',
   bin: {
-    clueprint: './cli/index.js'
+    clueprint: './cli/index.js',
+    'clueprint-mcp': './server/index.cjs'
   },
   files: ['cli/', 'server/', 'extension/', 'assets/'],
   dependencies: {
@@ -69,6 +77,19 @@ const packageJson = {
 
 writeFileSync(join(publishDir, 'package.json'), JSON.stringify(packageJson, null, 2) + '\n');
 console.log('   package.json generated');
+
+// Step 5: Stamp version into extension manifest and create ZIP
+console.log('\n5. Creating Chrome Web Store ZIP...');
+const manifestPath = join(publishDir, 'extension', 'manifest.json');
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+manifest.version = version;
+writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+console.log(`   manifest.json version → ${version}`);
+
+const extensionDir = join(publishDir, 'extension');
+const zipPath = join(publishDir, 'clueprint-extension.zip');
+execSync(`cd "${extensionDir}" && zip -r "${zipPath}" .`, { stdio: 'pipe' });
+console.log('   clueprint-extension.zip created');
 
 console.log('\nDone! To publish:\n');
 console.log('  cd publish');
