@@ -113,37 +113,41 @@ async function setupLocal(projectRoot: string, options: SetupOptions): Promise<v
 async function setupFromNpm(options: SetupOptions): Promise<void> {
   const clueprintDir = join(homedir(), '.clueprint');
 
-  // Resolve bundled extension relative to CLI location
-  // In the published package: cli/commands/setup.js → ../extension/
+  // Resolve bundled assets relative to CLI location
+  // In the published package: cli/commands/setup.js → ../../extension/ and ../../server/
   const packageRoot = join(__dirname, '..', '..');
   const bundledExtension = join(packageRoot, 'extension');
+  const bundledServer = join(packageRoot, 'server');
 
-  // Verify bundled extension exists
+  // Verify bundled assets exist
   if (!existsSync(bundledExtension)) {
     p.cancel('Bundled extension not found. The package may be corrupted.');
     process.exit(1);
   }
+  if (!existsSync(bundledServer)) {
+    p.cancel('Bundled MCP server not found. The package may be corrupted.');
+    process.exit(1);
+  }
 
-  // Step 1: Copy extension to ~/.clueprint/extension/
+  // Step 1: Copy extension + server to ~/.clueprint/
   const copySpinner = p.spinner();
-  copySpinner.start('Installing Chrome extension...');
+  copySpinner.start('Installing Chrome extension and MCP server...');
 
   try {
     mkdirSync(clueprintDir, { recursive: true });
     cpSync(bundledExtension, join(clueprintDir, 'extension'), { recursive: true });
-    copySpinner.stop('Chrome extension installed');
+    cpSync(bundledServer, join(clueprintDir, 'server'), { recursive: true });
+    copySpinner.stop('Chrome extension and MCP server installed');
   } catch (error) {
     copySpinner.stop('Installation failed');
     p.log.error(`Could not copy files to ${clueprintDir}`);
     process.exit(1);
   }
 
-  // Step 2: Configure MCP for Claude Code (uses npx to always run latest version)
+  // Step 2: Configure MCP for Claude Code (direct node path for instant startup)
   if (!options.skipMcp) {
-    await configureMcp({
-      command: 'npx',
-      args: ['-y', '-p', '@clueprint/mcp', 'clueprint-mcp'],
-    });
+    const serverPath = join(clueprintDir, 'server', 'index.cjs');
+    await configureMcp({ command: 'node', args: [serverPath] });
   } else {
     p.log.info('Skipping MCP configuration (--skip-mcp flag)');
   }
@@ -155,6 +159,9 @@ async function setupFromNpm(options: SetupOptions): Promise<void> {
   const issues: string[] = [];
   if (!existsSync(join(clueprintDir, 'extension', 'manifest.json'))) {
     issues.push('Extension not installed correctly');
+  }
+  if (!existsSync(join(clueprintDir, 'server', 'index.cjs'))) {
+    issues.push('MCP server not installed correctly');
   }
 
   if (issues.length === 0) {
