@@ -151,7 +151,7 @@ async function setupFromNpm(options: SetupOptions): Promise<void> {
 
   // Step 2: Configure MCP for Claude Code (npx ensures latest version)
   if (!options.skipMcp) {
-    await configureMcp({ command: 'npx', args: ['-y', '@clueprint/mcp', 'start'] });
+    await configureMcp({ command: 'npx', args: ['-y', '@clueprint/mcp'] });
   } else {
     p.log.info('Skipping MCP configuration (--skip-mcp flag)');
   }

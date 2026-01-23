@@ -2,7 +2,7 @@
   "mcpServers": {
     "clueprint": {
       "command": "npx",
-      "args": ["-y", "@clueprint/mcp", "start"]
+      "args": ["-y", "@clueprint/mcp"]
     }
   }
 }
