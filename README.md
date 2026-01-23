@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/logo.png" alt="clueprint" width="260" />
+  <img src="https://raw.githubusercontent.com/mariojankovic/clueprint/main/assets/logo.png" alt="clueprint" width="260" />
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/clueprint"><img src="https://img.shields.io/npm/v/clueprint.svg?style=flat-square&color=7c3aed" alt="npm version" /></a>
-  <a href="https://www.npmjs.com/package/clueprint"><img src="https://img.shields.io/npm/dm/clueprint.svg?style=flat-square&color=06b6d4" alt="npm downloads" /></a>
+  <a href="https://www.npmjs.com/package/@clueprint/mcp"><img src="https://img.shields.io/npm/v/@clueprint/mcp.svg?style=flat-square&color=7c3aed" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@clueprint/mcp"><img src="https://img.shields.io/npm/dm/@clueprint/mcp.svg?style=flat-square&color=06b6d4" alt="npm downloads" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-94a3b8.svg?style=flat-square" alt="license" /></a>
 </p>
 

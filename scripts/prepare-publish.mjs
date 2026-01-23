@@ -40,7 +40,7 @@ console.log('   README.md  ← README.md');
 // Step 4: Generate package.json
 const packageJson = {
   name: '@clueprint/mcp',
-  version: '0.1.3',
+  version: '1.0.0',
   description: 'Browser visibility for AI assistants — MCP server + Chrome extension',
   type: 'module',
   bin: {
@@ -63,7 +63,7 @@ const packageJson = {
   license: 'MIT',
   repository: {
     type: 'git',
-    url: 'https://github.com/anthropics/clueprint.git'
+    url: 'https://github.com/mariojankovic/clueprint.git'
   }
 };
 
