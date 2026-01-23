@@ -92,54 +92,33 @@ export async function status(): Promise<void> {
   }
 
   // Check 5: Claude Code MCP configuration
-  const claudeConfigPath = join(homedir(), '.claude', 'mcp.json');
+  // User-scope config lives in ~/.claude.json (NOT ~/.claude/mcp.json)
+  const claudeConfigPath = join(homedir(), '.claude.json');
+  let mcpConfigured = false;
 
   if (existsSync(claudeConfigPath)) {
     try {
       const config = JSON.parse(readFileSync(claudeConfigPath, 'utf-8'));
       const mcpServers = config.mcpServers || {};
-
       if (mcpServers['clueprint']) {
-        const serverConfig = mcpServers['clueprint'];
-        const serverPath = serverConfig.args?.[0] || 'unknown';
-        const serverExists = existsSync(serverPath);
-
-        if (serverExists) {
-          checks.push({
-            name: 'Claude Code MCP',
-            status: 'ok',
-            message: 'Configured',
-          });
-        } else {
-          checks.push({
-            name: 'Claude Code MCP',
-            status: 'warning',
-            message: 'Server path not found',
-            hint: `Expected: ${serverPath}`,
-          });
-        }
-      } else {
+        mcpConfigured = true;
         checks.push({
           name: 'Claude Code MCP',
-          status: 'warning',
-          message: 'Not configured',
-          hint: 'Run: clueprint setup',
+          status: 'ok',
+          message: `Configured (user scope)`,
         });
       }
     } catch {
-      checks.push({
-        name: 'Claude Code MCP',
-        status: 'warning',
-        message: 'Config parse error',
-        hint: 'Check ~/.claude/mcp.json',
-      });
+      // Parse error, check below
     }
-  } else {
+  }
+
+  if (!mcpConfigured) {
     checks.push({
       name: 'Claude Code MCP',
       status: 'warning',
       message: 'Not configured',
-      hint: 'Run: clueprint setup',
+      hint: 'Run: npx @clueprint/mcp setup',
     });
   }
 

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "clueprint": {
-      "command": "npx",
-      "args": ["-y", "@clueprint/mcp"]
+      "command": "node",
+      "args": ["packages/mcp-server/dist/index.js"]
     }
   }
 }

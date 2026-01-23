@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
@@ -62,8 +62,8 @@ async function setupLocal(projectRoot: string, options: SetupOptions): Promise<v
 
   // Step 3: Configure MCP for Claude Code
   if (!options.skipMcp) {
-    const mcpServerPath = join(projectRoot, 'packages/mcp-server/dist/index.js');
-    await configureMcp({ command: 'node', args: [mcpServerPath] });
+    const serverPath = join(projectRoot, 'packages/mcp-server/dist/index.js');
+    await configureMcp({ command: 'node', args: [serverPath] });
   } else {
     p.log.info('Skipping MCP configuration (--skip-mcp flag)');
   }
@@ -149,7 +149,7 @@ async function setupFromNpm(options: SetupOptions): Promise<void> {
     process.exit(1);
   }
 
-  // Step 2: Configure MCP for Claude Code (npx ensures latest version)
+  // Step 2: Configure MCP for Claude Code (npx for automatic updates)
   if (!options.skipMcp) {
     await configureMcp({ command: 'npx', args: ['-y', '@clueprint/mcp'] });
   } else {
@@ -241,65 +241,93 @@ function runCommand(command: string, args: string[], options: { cwd: string }): 
   });
 }
 
-interface McpServerConfig {
+interface McpConfig {
   command: string;
   args: string[];
 }
 
-async function configureMcp(serverConfig: McpServerConfig): Promise<boolean> {
-  const claudeConfigDir = join(homedir(), '.claude');
-  const claudeSettingsPath = join(claudeConfigDir, 'mcp.json');
+/**
+ * Check if `claude` CLI is available in PATH.
+ */
+function isClaudeCliAvailable(): boolean {
+  try {
+    execSync('claude --version', { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-  // Check if Claude Code config exists
-  if (!existsSync(claudeConfigDir)) {
-    const shouldCreate = await p.confirm({
-      message: 'Claude Code config not found. Create MCP configuration?',
-      initialValue: true,
-    });
+/**
+ * Configure MCP server for Claude Code.
+ *
+ * Strategy:
+ * 1. Try `claude mcp add --scope user` (canonical, works in all projects)
+ * 2. Fall back to writing ~/.claude.json directly (the correct user-scope location)
+ *
+ * IMPORTANT: User-scope MCP config lives in ~/.claude.json (NOT ~/.claude/mcp.json).
+ * The ~/.claude/mcp.json file is NOT read for user-scope servers.
+ */
+async function configureMcp(mcpConfig: McpConfig): Promise<boolean> {
+  const mcpSpinner = p.spinner();
+  mcpSpinner.start('Configuring MCP server for Claude Code...');
 
-    if (p.isCancel(shouldCreate) || !shouldCreate) {
-      p.log.info('Skipping MCP configuration');
-      return false;
+  // Strategy 1: Use `claude mcp add` (official API)
+  if (isClaudeCliAvailable()) {
+    try {
+      // Remove existing entry first (ignore errors if not found)
+      try {
+        execSync('claude mcp remove clueprint --scope user', { stdio: 'pipe' });
+      } catch {
+        // Not found, that's fine
+      }
+
+      // Build the command: claude mcp add --scope user --transport stdio clueprint -- <command> <args...>
+      const cmdArgs = [mcpConfig.command, ...mcpConfig.args].map(a => `"${a}"`).join(' ');
+      execSync(
+        `claude mcp add --scope user --transport stdio clueprint -- ${cmdArgs}`,
+        { stdio: 'pipe' }
+      );
+      mcpSpinner.stop('MCP server registered (user scope - works in all projects)');
+      p.log.success(`Command: ${pc.dim(`${mcpConfig.command} ${mcpConfig.args.join(' ')}`)}`);
+      return true;
+    } catch (error) {
+      // Fall through to manual config
+      mcpSpinner.message('Falling back to manual configuration...');
     }
-
-    mkdirSync(claudeConfigDir, { recursive: true });
   }
 
-  // Read existing config
+  // Strategy 2: Write to ~/.claude.json directly (user-scope config file)
+  const claudeConfigPath = join(homedir(), '.claude.json');
+
   let config: Record<string, unknown> = {};
-  if (existsSync(claudeSettingsPath)) {
+  if (existsSync(claudeConfigPath)) {
     try {
-      config = JSON.parse(readFileSync(claudeSettingsPath, 'utf-8'));
+      config = JSON.parse(readFileSync(claudeConfigPath, 'utf-8'));
     } catch {
       config = {};
     }
   }
 
   const mcpServers = (config.mcpServers || {}) as Record<string, unknown>;
-  const existingClueprint = mcpServers['clueprint'];
 
-  if (existingClueprint) {
-    const shouldOverwrite = await p.confirm({
-      message: 'Clueprint MCP already configured. Overwrite?',
-      initialValue: false,
-    });
-
-    if (p.isCancel(shouldOverwrite) || !shouldOverwrite) {
-      p.log.info('Keeping existing MCP configuration');
-      return true;
-    }
-  }
-
-  mcpServers['clueprint'] = serverConfig;
+  mcpServers['clueprint'] = {
+    type: 'stdio',
+    command: mcpConfig.command,
+    args: mcpConfig.args,
+  };
 
   config.mcpServers = mcpServers;
 
   try {
-    writeFileSync(claudeSettingsPath, JSON.stringify(config, null, 2));
-    p.log.success('MCP server configured for Claude Code');
+    writeFileSync(claudeConfigPath, JSON.stringify(config, null, 2) + '\n');
+    mcpSpinner.stop('MCP server configured (user scope - works in all projects)');
+    p.log.success(`Config: ${pc.dim(claudeConfigPath)}`);
+    p.log.success(`Command: ${pc.dim(`${mcpConfig.command} ${mcpConfig.args.join(' ')}`)}`);
     return true;
   } catch (error) {
-    p.log.error(`Could not write to ${claudeSettingsPath}`);
+    mcpSpinner.stop('Failed to configure MCP server');
+    p.log.error(`Could not write to ${claudeConfigPath}`);
     return false;
   }
 }
