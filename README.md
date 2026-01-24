@@ -13,9 +13,7 @@
   Select elements, capture regions, record flows — all visible to Claude via MCP.
 </p>
 
-<p align="center">
-  <video src="https://raw.githubusercontent.com/mariojankovic/clueprint/main/assets/promo.mp4" autoplay loop muted playsinline width="720"></video>
-</p>
+https://github.com/user-attachments/assets/cef3acc1-df43-49ee-95d7-b18174993902
 
 ---
 
