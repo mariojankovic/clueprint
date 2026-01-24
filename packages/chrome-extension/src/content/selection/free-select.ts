@@ -5,6 +5,7 @@
 import { getSelector } from '../utils/selector';
 import { getAestheticStyles } from '../utils/styles';
 import { getElementsInRegion, getDOMStructure } from '../capture/dom';
+import { detectSourceInfo } from '../capture/source-detect';
 import { captureRegionScreenshot } from '../capture/screenshot';
 import { mountRegionPicker, showConfirmation } from '../ui/mount';
 import type {
@@ -377,6 +378,7 @@ async function selectRegion(rect: ElementRect, intent: Intent, includeScreenshot
     role: el.getAttribute('role') || getSemanticRole(el),
     styles: getAestheticStyles(el),
     hasInteractionStates: hasInteractionStates(el),
+    sourceInfo: detectSourceInfo(el) || undefined,
   }));
 
   // Build structure representation

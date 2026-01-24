@@ -104,6 +104,13 @@ export interface Diagnosis {
   relatedErrors: string[];
 }
 
+export interface SourceInfo {
+  framework: 'react' | 'vue' | 'svelte' | 'angular';
+  component: string;
+  file?: string;
+  line?: number;
+}
+
 export interface InspectCapture {
   mode: 'inspect';
   intent: Intent;
@@ -117,6 +124,7 @@ export interface InspectCapture {
     attributes: Record<string, string>;
     rect: ElementRect;
     styles: ElementStyles;
+    sourceInfo?: SourceInfo;
   };
   parent: ParentInfo;
   siblings: SiblingInfo[];
@@ -139,6 +147,7 @@ export interface FreeSelectCapture {
     role: string;
     styles: Record<string, unknown>;
     hasInteractionStates: boolean;
+    sourceInfo?: SourceInfo;
   }>;
   structure: string;
   aestheticAnalysis?: {

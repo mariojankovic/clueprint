@@ -182,6 +182,13 @@ export interface Diagnosis {
   relatedErrors: string[];
 }
 
+export interface SourceInfo {
+  framework: 'react' | 'vue' | 'svelte' | 'angular';
+  component: string;
+  file?: string;
+  line?: number;
+}
+
 export interface InspectCapture {
   mode: 'inspect';
   intent: Intent;
@@ -195,6 +202,7 @@ export interface InspectCapture {
     attributes: Record<string, string>;
     rect: ElementRect;
     styles: ElementStyles;
+    sourceInfo?: SourceInfo;
   };
 
   parent: ParentInfo;
@@ -219,6 +227,7 @@ export interface RegionElement {
   role: string;
   styles: AestheticStyles;
   hasInteractionStates: boolean;
+  sourceInfo?: SourceInfo;
 }
 
 export interface AestheticAnalysis {
@@ -453,6 +462,8 @@ export interface ExtensionSettings {
   screenshotQuality: number;
   screenshotMaxWidth: number;
   serverPort: number;
+  /** Only activate on these domains. Empty array = all sites. */
+  allowedDomains: string[];
 }
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -467,4 +478,5 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   screenshotQuality: 0.7,
   screenshotMaxWidth: 800,
   serverPort: 7007,
+  allowedDomains: ['localhost', '127.0.0.1'],
 };

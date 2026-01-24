@@ -11,6 +11,7 @@ import { startPerformanceMonitoring, stopPerformanceMonitoring, getPerformanceSu
 import { startNetworkMonitoring, stopNetworkMonitoring, getNetworkFailures, addNetworkEntry, getNetworkBuffer } from './monitoring/network';
 import { startInteractionMonitoring, stopInteractionMonitoring } from './monitoring/interactions';
 import FloatingWidget from '../shared/components/FloatingWidget.svelte';
+import { DEFAULT_SETTINGS } from '../types';
 import type { BrowserContext, NetworkEntry, ExtensionMessage } from '../types';
 
 // Extension state
@@ -83,13 +84,22 @@ function initialize(): void {
     }
   }).catch(() => {});
 
-  // Show floating toolbar based on saved preference (default: visible)
-  chrome.storage.local.get('widgetVisible').then(({ widgetVisible }) => {
-    if (widgetVisible !== false) {
+  // Show floating toolbar based on saved preference + domain allowlist
+  chrome.storage.local.get(['widgetVisible', 'allowedDomains']).then(({ widgetVisible, allowedDomains }) => {
+    if (widgetVisible === false) return;
+
+    // Check domain allowlist (empty array = all sites allowed)
+    const domains: string[] = allowedDomains ?? DEFAULT_SETTINGS.allowedDomains;
+    if (domains.length > 0 && !isDomainAllowed(window.location.hostname, domains)) {
+      return; // Don't show widget on non-allowed domains
+    }
+
+    createFloatingWidget();
+  }).catch(() => {
+    // On error, only show on localhost by default
+    if (isDomainAllowed(window.location.hostname, DEFAULT_SETTINGS.allowedDomains)) {
       createFloatingWidget();
     }
-  }).catch(() => {
-    createFloatingWidget();
   });
 
   isExtensionActive = true;
@@ -623,6 +633,25 @@ function cleanup(): void {
   hideRecordingIndicator();
   closeWidget();
   isExtensionActive = false;
+}
+
+/**
+ * Check if a hostname matches the allowed domains list.
+ * Supports exact match and wildcard prefix (*.example.com).
+ */
+function isDomainAllowed(hostname: string, allowedDomains: string[]): boolean {
+  for (const domain of allowedDomains) {
+    if (domain.startsWith('*.')) {
+      // Wildcard: *.vercel.app matches foo.vercel.app
+      const suffix = domain.slice(1); // .vercel.app
+      if (hostname.endsWith(suffix) || hostname === domain.slice(2)) {
+        return true;
+      }
+    } else {
+      if (hostname === domain) return true;
+    }
+  }
+  return false;
 }
 
 // Initialize on load

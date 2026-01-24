@@ -4,6 +4,7 @@
 
 import { getSelector, getShortSelector, getAllClasses } from '../utils/selector';
 import { getElementStyles, getAppliedCSSRules, detectStyleAnomalies } from '../utils/styles';
+import { detectSourceInfo } from './source-detect';
 import type {
   ElementRect,
   ParentInfo,
@@ -148,6 +149,9 @@ export function captureElement(
   // Generate pre-diagnosis
   const diagnosis = generateDiagnosis(element, siblings, cssRules, browserContext);
 
+  // Detect framework source file
+  const sourceInfo = detectSourceInfo(element) || undefined;
+
   return {
     mode: 'inspect',
     intent,
@@ -162,6 +166,7 @@ export function captureElement(
       attributes: getElementAttributes(element),
       rect: getElementRect(element),
       styles: getElementStyles(element, cssDetailLevel),
+      sourceInfo,
     },
 
     parent: getParentInfo(element),

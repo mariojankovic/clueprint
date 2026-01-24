@@ -23,6 +23,16 @@ export function formatElementReport(capture: InspectCapture): string {
 
   lines.push('');
 
+  // Source file (framework component detection)
+  if (el.sourceInfo) {
+    const src = el.sourceInfo;
+    const location = src.file
+      ? `${src.file}${src.line ? ':' + src.line : ''}`
+      : '';
+    lines.push(`SOURCE: ${src.component}${location ? ' (' + location + ')' : ''} [${src.framework}]`);
+    lines.push('');
+  }
+
   // Basic info
   lines.push(`SELECTOR: ${el.selector}`);
   lines.push(`SIZE: ${el.rect.width}×${el.rect.height}px`);
@@ -167,7 +177,10 @@ export function formatRegionReport(capture: FreeSelectCapture): string {
   lines.push(`ELEMENTS (${capture.elements.length}):`);
   for (const el of capture.elements.slice(0, 10)) {
     const text = el.text ? ` "${el.text.slice(0, 30)}"` : '';
-    lines.push(`  • ${el.tag}.${el.selector.split('.').pop() || ''}${text} [${el.role}]`);
+    const source = el.sourceInfo
+      ? ` ← ${el.sourceInfo.component}${el.sourceInfo.file ? ' (' + el.sourceInfo.file.split('/').pop() + (el.sourceInfo.line ? ':' + el.sourceInfo.line : '') + ')' : ''}`
+      : '';
+    lines.push(`  • ${el.tag}.${el.selector.split('.').pop() || ''}${text} [${el.role}]${source}`);
   }
   lines.push('');
 
