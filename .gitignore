@@ -35,3 +35,7 @@ npm-debug.log*
 
 # Publish output
 publish/
+
+# npm prepack artifacts (copied from root at pack time)
+packages/mcp-server/assets/
+packages/mcp-server/README.md

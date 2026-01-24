@@ -13,6 +13,10 @@
   Select elements, capture regions, record flows — all visible to Claude via MCP.
 </p>
 
+<p align="center">
+  <video src="assets/promo.mp4" autoplay loop muted playsinline width="720"></video>
+</p>
+
 ---
 
 ## Install
