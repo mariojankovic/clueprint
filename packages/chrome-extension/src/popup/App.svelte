@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { MousePointerClick, SquareDashedMousePointer, Activity, Clapperboard, Layers, Eye, EyeOff, Circle } from 'lucide-svelte';
+  import { MousePointerClick, Activity, Clapperboard, Layers, Eye, EyeOff, Circle } from 'lucide-svelte';
 
   // State
   let isActive = $state(false);
@@ -121,17 +121,10 @@
           <span class="flex items-center justify-center w-5 text-white/40">
             <MousePointerClick size={14} strokeWidth={1.5} />
           </span>
-          <span class="text-white/70">Any element</span>
-        </div>
-        <kbd class="py-0.5 px-1.5 bg-white/[0.06] border border-white/10 rounded text-[10px] text-white/40 font-sans">{mod()}⇧S</kbd>
-      </div>
-
-      <div class="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
-        <div class="flex items-center gap-2.5">
-          <span class="flex items-center justify-center w-5 text-white/40">
-            <SquareDashedMousePointer size={14} strokeWidth={1.5} />
-          </span>
-          <span class="text-white/70">A screen region</span>
+          <div class="flex flex-col">
+            <span class="text-white/70">Any element or region</span>
+            <span class="text-[10px] text-white/30">Click = element, drag = region</span>
+          </div>
         </div>
         <kbd class="py-0.5 px-1.5 bg-white/[0.06] border border-white/10 rounded text-[10px] text-white/40 font-sans">{mod()}⇧X</kbd>
       </div>

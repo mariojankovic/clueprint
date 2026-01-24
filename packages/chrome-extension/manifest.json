@@ -46,19 +46,12 @@
       },
       "description": "Activate Clueprint"
     },
-    "toggle-inspect": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+S",
-        "mac": "Command+Shift+S"
-      },
-      "description": "Toggle element inspect mode"
-    },
-    "toggle-region": {
+    "toggle-select": {
       "suggested_key": {
         "default": "Ctrl+Shift+X",
         "mac": "Command+Shift+X"
       },
-      "description": "Toggle region select mode"
+      "description": "Toggle selection mode (click = inspect, drag = region)"
     }
   },
   "web_accessible_resources": [

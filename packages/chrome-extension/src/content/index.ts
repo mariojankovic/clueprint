@@ -4,7 +4,7 @@
  */
 
 import { mount, unmount } from 'svelte';
-import { activateInspectMode, deactivateInspectMode, toggleInspectMode, initInspectMode, cleanupInspectMode, isInspectMode } from './selection/inspect-mode';
+import { activateInspectMode, deactivateInspectMode, initInspectMode, cleanupInspectMode, isInspectMode } from './selection/inspect-mode';
 import { initFreeSelectMode, cleanupFreeSelectMode, activateFreeSelectDrag, deactivateFreeSelectDrag, toggleFreeSelectDrag, isFreeSelectMode } from './selection/free-select';
 import { startConsoleMonitoring, stopConsoleMonitoring, getConsoleErrors, getConsoleBuffer } from './monitoring/console';
 import { startPerformanceMonitoring, stopPerformanceMonitoring, getPerformanceSummary } from './monitoring/performance';
@@ -25,7 +25,7 @@ let floatingWidget: HTMLElement | null = null;
 let widgetStateInterval: number | null = null;
 let lastWidgetRecordingState = false;
 let lastWidgetBufferingState = false;
-let widgetHiddenForSelection = false;
+let lastWidgetSelectState = false;
 
 /**
  * Inject Plus Jakarta Sans font for UI elements
@@ -59,7 +59,7 @@ function initialize(): void {
   initInspectMode();
   initFreeSelectMode();
 
-  // Direct shortcut: Cmd+Shift+X for region select (bypass Chrome command system)
+  // Direct shortcut: Cmd+Shift+X for selection mode (click = inspect, drag = region)
   document.addEventListener('keydown', (event) => {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'x') {
       event.preventDefault();
@@ -121,12 +121,6 @@ function handleMessage(
 
     case 'DEACTIVATE_INSPECT':
       deactivateInspectMode();
-      sendResponse({ success: true });
-      break;
-
-    case 'TOGGLE_INSPECT':
-      if (isFreeSelectMode()) deactivateFreeSelectDrag();
-      toggleInspectMode();
       sendResponse({ success: true });
       break;
 
@@ -428,7 +422,7 @@ function createFloatingWidget(): void {
   // Create host element
   floatingWidget = document.createElement('div');
   floatingWidget.id = 'ai-devtools-widget-host';
-  floatingWidget.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2147483646;';
+  floatingWidget.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2147483647;';
 
   const shadow = floatingWidget.attachShadow({ mode: 'closed' });
 
@@ -444,13 +438,12 @@ function createFloatingWidget(): void {
   // Mount Svelte component
   const widgetInstance = mount(FloatingWidget, {
     target,
+
     props: {
       isRecording,
       isBuffering,
-      isInspectActive: isInspectMode(),
-      isRegionActive: isFreeSelectMode(),
-      onInspect: () => activateInspectMode(true),
-      onRegion: () => activateFreeSelectDrag(),
+      isSelectActive: isInspectMode() || isFreeSelectMode(),
+      onSelect: () => activateFreeSelectDrag(),
       onStartRecording: () => chrome.runtime.sendMessage({ type: 'START_RECORDING' }),
       onStopRecording: () => chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }),
       onSendBuffer: () => chrome.runtime.sendMessage({ type: 'SEND_BUFFER' }),
@@ -476,17 +469,16 @@ function createFloatingWidget(): void {
  * Close the floating widget with exit animation
  */
 function closeWidget(): void {
-  widgetHiddenForSelection = false;
+  lastWidgetSelectState = false;
   if (widgetStateInterval) {
     clearInterval(widgetStateInterval);
     widgetStateInterval = null;
   }
   if (floatingWidget) {
     const target = (floatingWidget as any)._target as HTMLElement | undefined;
-    const widgetDiv = target?.querySelector('[class*="widget-enter"], [class*="widget-exit"]') as HTMLElement | null;
+    const widgetDiv = target?.querySelector('[data-widget-pill]') as HTMLElement | null;
 
     if (widgetDiv) {
-      widgetDiv.classList.remove('widget-enter');
       widgetDiv.classList.add('widget-exit');
       const widget = floatingWidget;
       setTimeout(() => {
@@ -509,38 +501,16 @@ function closeWidget(): void {
 function updateFloatingWidgetState(): void {
   if (!floatingWidget) return;
 
-  const widgetTarget = (floatingWidget as any)._target as HTMLElement | undefined;
-  const widgetDiv = widgetTarget?.querySelector('[class*="widget-enter"], [class*="widget-exit"]') as HTMLElement | null
-    ?? widgetTarget?.firstElementChild as HTMLElement | null;
-
-  // Animate widget hide/show during selection modes
-  const selectionActive = isInspectMode() || isFreeSelectMode();
-  if (selectionActive && !widgetHiddenForSelection) {
-    widgetHiddenForSelection = true;
-    if (widgetDiv) {
-      widgetDiv.classList.remove('widget-enter');
-      widgetDiv.classList.add('widget-exit');
-    }
-    setTimeout(() => {
-      if (floatingWidget) {
-        floatingWidget.style.pointerEvents = 'none';
-        floatingWidget.style.visibility = 'hidden';
-      }
-    }, 250);
-  } else if (!selectionActive && widgetHiddenForSelection) {
-    widgetHiddenForSelection = false;
-    floatingWidget.style.pointerEvents = '';
-    floatingWidget.style.visibility = '';
-    if (widgetDiv) {
-      widgetDiv.classList.remove('widget-exit');
-      widgetDiv.classList.add('widget-enter');
-    }
-  }
-
-  // Only remount if recording or buffering state changed
-  if (isRecording === lastWidgetRecordingState && isBuffering === lastWidgetBufferingState) return;
+  // Only remount if state actually changed
+  const currentSelectState = isInspectMode() || isFreeSelectMode();
+  if (
+    isRecording === lastWidgetRecordingState &&
+    isBuffering === lastWidgetBufferingState &&
+    currentSelectState === lastWidgetSelectState
+  ) return;
   lastWidgetRecordingState = isRecording;
   lastWidgetBufferingState = isBuffering;
+  lastWidgetSelectState = currentSelectState;
 
   const target = (floatingWidget as any)._target as HTMLElement | undefined;
   const oldInstance = (floatingWidget as any)._instance;
@@ -550,13 +520,12 @@ function updateFloatingWidgetState(): void {
   unmount(oldInstance);
   const newInstance = mount(FloatingWidget, {
     target,
+
     props: {
       isRecording,
       isBuffering,
-      isInspectActive: isInspectMode(),
-      isRegionActive: isFreeSelectMode(),
-      onInspect: () => activateInspectMode(true),
-      onRegion: () => activateFreeSelectDrag(),
+      isSelectActive: isInspectMode() || isFreeSelectMode(),
+      onSelect: () => activateFreeSelectDrag(),
       onStartRecording: () => chrome.runtime.sendMessage({ type: 'START_RECORDING' }),
       onStopRecording: () => chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }),
       onSendBuffer: () => chrome.runtime.sendMessage({ type: 'SEND_BUFFER' }),

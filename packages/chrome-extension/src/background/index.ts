@@ -420,10 +420,8 @@ async function handleCommand(command: string): Promise<void> {
   if (!tab?.id) return;
 
   switch (command) {
-    case 'toggle-inspect':
-      chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_INSPECT' }).catch(() => {});
-      break;
-    case 'toggle-region':
+    case 'toggle-select':
+      // Unified: click = inspect, drag = region
       chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_REGION' }).catch(() => {});
       break;
   }
@@ -435,11 +433,11 @@ async function handleCommand(command: string): Promise<void> {
 async function handleActionClick(tab: chrome.tabs.Tab): Promise<void> {
   if (!tab.id) return;
 
-  // Toggle inspect mode in content script
+  // Toggle selection mode in content script (unified: click = inspect, drag = region)
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_INSPECT' });
+    await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_REGION' });
   } catch (error) {
-    console.warn('[AI DevTools] Failed to toggle inspect mode:', error);
+    console.warn('[AI DevTools] Failed to toggle selection mode:', error);
   }
 }
 

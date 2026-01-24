@@ -29,8 +29,8 @@ Instead of describing what you see or copy-pasting HTML, clueprint lets your AI 
 
 | Action | What gets captured |
 | --- | --- |
-| **Cmd+Shift+S** to inspect, then click | Tag, classes, attributes, computed styles, parent context, related console errors |
-| **Cmd+Shift+X** to select region, then drag | Screenshot, all elements within bounds, DOM structure, visual analysis |
+| **Cmd+Shift+X** then click an element | Tag, classes, attributes, computed styles, parent context, related console errors |
+| **Cmd+Shift+X** then drag a region | Screenshot, all elements within bounds, DOM structure, visual analysis |
 | **Record a flow** (via widget) | Clicks, scrolls, inputs, network requests, console errors, layout shifts |
 | **Activity buffer** (last 30s) | Background capture of interactions, network, and errors without explicit recording |
 | **Run an audit** | Console errors, network failures, performance metrics, accessibility issues |

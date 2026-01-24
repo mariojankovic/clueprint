@@ -1,5 +1,5 @@
 /**
- * Free Select Mode - Cmd+Shift+Drag region selection
+ * Unified Select Mode - Click = element inspect, Drag = region select
  */
 
 import { getSelector } from '../utils/selector';
@@ -8,6 +8,7 @@ import { getElementsInRegion, getDOMStructure } from '../capture/dom';
 import { detectSourceInfo } from '../capture/source-detect';
 import { captureRegionScreenshot } from '../capture/screenshot';
 import { mountRegionPicker, showConfirmation } from '../ui/mount';
+import { inspectElementAtPoint } from './inspect-mode';
 import type {
   FreeSelectCapture,
   Intent,
@@ -19,12 +20,19 @@ import type {
 
 let isFreeSelectActive = false;
 let isDrawing = false;
+let isPendingDrag = false; // mousedown happened but threshold not yet crossed
 let startX = 0;
 let startY = 0;
 let selectionOverlay: HTMLElement | null = null;
 let pickerCleanup: (() => void) | null = null; // Cleanup function for the current picker
 let highlightOverlays = new Map<Element, HTMLElement>();
 let highlightRAF: number | null = null;
+
+// Hover highlight state (single-element highlight before drag)
+let hoverHighlight: HTMLElement | null = null;
+let hoverLabel: HTMLElement | null = null;
+let hoveredElement: Element | null = null;
+let blockNextClick = false; // Block the click event that follows mouseup on element select
 
 /**
  * Create selection rectangle overlay
@@ -62,6 +70,105 @@ function updateSelectionRect(endX: number, endY: number): void {
 }
 
 /**
+ * Create hover highlight overlay (single element highlight)
+ */
+function createHoverHighlight(): HTMLElement {
+  const overlay = document.createElement('div');
+  overlay.id = 'ai-devtools-select-highlight';
+  overlay.style.cssText = `
+    position: fixed;
+    pointer-events: none;
+    border: 2px solid #0066ff;
+    background: rgba(0, 102, 255, 0.1);
+    z-index: 2147483647;
+    transition: all 0.1s ease;
+    border-radius: 4px;
+    display: none;
+  `;
+  return overlay;
+}
+
+/**
+ * Create hover label tooltip
+ */
+function createHoverLabel(): HTMLElement {
+  const label = document.createElement('div');
+  label.id = 'ai-devtools-select-label';
+  label.style.cssText = `
+    position: fixed;
+    pointer-events: none;
+    background: #0066ff;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Monaco, monospace;
+    font-size: 11px;
+    z-index: 2147483647;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    display: none;
+  `;
+  return label;
+}
+
+/**
+ * Update hover highlight to match element
+ */
+function updateHoverHighlight(element: Element): void {
+  if (!hoverHighlight) {
+    hoverHighlight = createHoverHighlight();
+    document.body.appendChild(hoverHighlight);
+  }
+  if (!hoverLabel) {
+    hoverLabel = createHoverLabel();
+    document.body.appendChild(hoverLabel);
+  }
+
+  const rect = element.getBoundingClientRect();
+
+  hoverHighlight.style.top = `${rect.top}px`;
+  hoverHighlight.style.left = `${rect.left}px`;
+  hoverHighlight.style.width = `${rect.width}px`;
+  hoverHighlight.style.height = `${rect.height}px`;
+  hoverHighlight.style.display = 'block';
+
+  // Label
+  const tag = element.tagName.toLowerCase();
+  const id = element.id ? `#${element.id}` : '';
+  const classes = Array.from(element.classList).slice(0, 2).map(c => `.${c}`).join('');
+  const dims = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+  let name = tag + id + classes;
+  if (name.length > 40) name = name.slice(0, 37) + '...';
+  hoverLabel.textContent = `${name} ${dims}`;
+
+  const labelHeight = 24;
+  const labelTop = rect.top > labelHeight + 5 ? rect.top - labelHeight - 5 : rect.bottom + 5;
+  hoverLabel.style.top = `${labelTop}px`;
+  hoverLabel.style.left = `${rect.left}px`;
+  hoverLabel.style.display = 'block';
+}
+
+/**
+ * Hide hover highlight
+ */
+function hideHoverHighlight(): void {
+  if (hoverHighlight) hoverHighlight.style.display = 'none';
+  if (hoverLabel) hoverLabel.style.display = 'none';
+  hoveredElement = null;
+}
+
+/**
+ * Remove hover highlight elements from DOM
+ */
+function removeHoverHighlight(): void {
+  hoverHighlight?.remove();
+  hoverHighlight = null;
+  hoverLabel?.remove();
+  hoverLabel = null;
+  hoveredElement = null;
+}
+
+/**
  * Handle keydown for Escape to cancel
  */
 function handleKeyDown(event: KeyboardEvent): void {
@@ -71,7 +178,7 @@ function handleKeyDown(event: KeyboardEvent): void {
 }
 
 /**
- * Handle mouse down to start selection
+ * Handle mouse down to start potential drag or click
  */
 function handleMouseDown(event: MouseEvent): void {
   if (!isFreeSelectActive) return;
@@ -89,41 +196,93 @@ function handleMouseDown(event: MouseEvent): void {
   // Clear highlights from any previous selection
   clearHighlights();
 
-  isDrawing = true;
+  // Start pending drag — we don't know yet if this is a click or drag
+  isPendingDrag = true;
+  isDrawing = false;
   startX = event.clientX;
   startY = event.clientY;
-
-  if (!selectionOverlay) {
-    selectionOverlay = createSelectionOverlay();
-    document.body.appendChild(selectionOverlay);
-  }
-
-  updateSelectionRect(startX, startY);
 }
 
 /**
- * Handle mouse move during drag
+ * Handle mouse move — hover highlight or drag
  */
 function handleMouseMove(event: MouseEvent): void {
-  if (!isDrawing) return;
+  if (!isFreeSelectActive) return;
 
-  event.preventDefault();
-  updateSelectionRect(event.clientX, event.clientY);
+  // Pending drag: check if we've crossed the threshold to start region drawing
+  if (isPendingDrag) {
+    const dx = Math.abs(event.clientX - startX);
+    const dy = Math.abs(event.clientY - startY);
 
-  // Throttle highlight updates with rAF
-  const endX = event.clientX;
-  const endY = event.clientY;
-  if (highlightRAF) cancelAnimationFrame(highlightRAF);
-  highlightRAF = requestAnimationFrame(() => {
-    updateHighlights(endX, endY);
-    highlightRAF = null;
-  });
+    if (dx > 20 || dy > 20) {
+      // Crossed threshold — switch to region drawing mode
+      isPendingDrag = false;
+      isDrawing = true;
+      hideHoverHighlight();
+
+      if (!selectionOverlay) {
+        selectionOverlay = createSelectionOverlay();
+        document.body.appendChild(selectionOverlay);
+      }
+      updateSelectionRect(event.clientX, event.clientY);
+    }
+    return;
+  }
+
+  // Active drawing: update selection rectangle and element highlights
+  if (isDrawing) {
+    event.preventDefault();
+    updateSelectionRect(event.clientX, event.clientY);
+
+    const endX = event.clientX;
+    const endY = event.clientY;
+    if (highlightRAF) cancelAnimationFrame(highlightRAF);
+    highlightRAF = requestAnimationFrame(() => {
+      updateHighlights(endX, endY);
+      highlightRAF = null;
+    });
+    return;
+  }
+
+  // No button held: show hover highlight on element under cursor
+  if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
+  if (document.getElementById('ai-devtools-intent-picker')) return;
+
+  const element = event.target as Element;
+  if (element && element !== hoveredElement) {
+    hoveredElement = element;
+    updateHoverHighlight(element);
+  }
 }
 
 /**
  * Handle mouse up to complete selection
  */
 function handleMouseUp(event: MouseEvent): void {
+  // Case 1: Click (never crossed drag threshold)
+  if (isPendingDrag) {
+    isPendingDrag = false;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const endX = event.clientX;
+    const endY = event.clientY;
+
+    // Block the subsequent click event from reaching the page
+    blockNextClick = true;
+
+    // Hide hover highlight and deactivate mode, then trigger inspect
+    hideHoverHighlight();
+    deactivateFreeSelectDrag();
+
+    const elementAtPoint = document.elementFromPoint(endX, endY);
+    if (elementAtPoint && !elementAtPoint.id?.startsWith('ai-devtools-')) {
+      inspectElementAtPoint(elementAtPoint, endX, endY);
+    }
+    return;
+  }
+
+  // Case 2: Region drag completed
   if (!isDrawing) return;
 
   event.preventDefault();
@@ -148,13 +307,6 @@ function handleMouseUp(event: MouseEvent): void {
     width: Math.abs(endX - startX),
     height: Math.abs(endY - startY),
   };
-
-  // Minimum size check
-  if (rect.width < 20 || rect.height < 20) {
-    hideSelection();
-    deactivateFreeSelectDrag();
-    return;
-  }
 
   // Show intent picker
   showRegionIntentPicker(rect, endX, endY);
@@ -562,16 +714,35 @@ function showRegionConfirmation(rect: ElementRect): void {
 }
 
 /**
+ * Block native click events during select mode
+ */
+function handleClickBlock(event: MouseEvent): void {
+  // Block the click that follows a mouseup-based element select
+  if (blockNextClick) {
+    blockNextClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+
+  if (!isFreeSelectActive) return;
+  if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
+  if (document.getElementById('ai-devtools-intent-picker')) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+/**
  * Activate free select drag mode
  */
 export function activateFreeSelectDrag(): void {
   if (isFreeSelectActive) return;
 
   isFreeSelectActive = true;
-  document.body.style.cursor = 'crosshair';
   document.body.style.userSelect = 'none';
 
-  console.log('[Clueprint] Region select activated. Drag to select.');
+  console.log('[Clueprint] Select mode activated. Click = element, drag = region.');
 }
 
 /**
@@ -582,7 +753,7 @@ export function deactivateFreeSelectDrag(): void {
 
   isFreeSelectActive = false;
   isDrawing = false;
-  document.body.style.cursor = '';
+  isPendingDrag = false;
   document.body.style.userSelect = '';
 
   // Cancel any pending highlight update
@@ -591,8 +762,9 @@ export function deactivateFreeSelectDrag(): void {
     highlightRAF = null;
   }
 
-  // Clear element highlights
+  // Clear element highlights and hover highlight
   clearHighlights();
+  removeHoverHighlight();
 
   // Properly cleanup picker (unmounts Svelte component and removes DOM)
   if (pickerCleanup) {
@@ -611,6 +783,7 @@ export function initFreeSelectMode(): void {
   document.addEventListener('mousedown', handleMouseDown, true);
   document.addEventListener('mousemove', handleMouseMove, true);
   document.addEventListener('mouseup', handleMouseUp, true);
+  document.addEventListener('click', handleClickBlock, true);
 }
 
 /**
@@ -621,6 +794,7 @@ export function cleanupFreeSelectMode(): void {
   document.removeEventListener('mousedown', handleMouseDown, true);
   document.removeEventListener('mousemove', handleMouseMove, true);
   document.removeEventListener('mouseup', handleMouseUp, true);
+  document.removeEventListener('click', handleClickBlock, true);
 
   deactivateFreeSelectDrag();
 }

@@ -635,6 +635,19 @@ export function toggleInspectMode(): void {
 }
 
 /**
+ * Trigger element inspection on a specific element (used by unified selection mode).
+ * Activates inspect mode, shows highlight and intent picker.
+ */
+export function inspectElementAtPoint(element: Element, x: number, y: number): void {
+  // Ensure inspect mode is active
+  if (!isInspectModeActive) {
+    activateInspectMode(true);
+  }
+  updateHighlight(element);
+  showIntentPicker(element, x, y);
+}
+
+/**
  * Check if inspect mode is active
  */
 export function isInspectMode(): boolean {
