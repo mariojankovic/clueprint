@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <video src="assets/promo.mp4" autoplay loop muted playsinline width="720"></video>
+  <video src="https://raw.githubusercontent.com/mariojankovic/clueprint/main/assets/promo.mp4" autoplay loop muted playsinline width="720"></video>
 </p>
 
 ---
@@ -31,14 +31,14 @@ The setup wizard installs the Chrome extension, configures the MCP server, and c
 
 Instead of describing what you see or copy-pasting HTML, clueprint lets your AI assistant observe the browser directly:
 
-| Action | What gets captured |
-| --- | --- |
-| **Cmd+Shift+X** then click an element | Tag, classes, attributes, computed styles, parent context, related console errors |
-| **Cmd+Shift+X** then drag a region | Screenshot, all elements within bounds, DOM structure, visual analysis |
-| **Record a flow** (via widget) | Clicks, scrolls, inputs, network requests, console errors, layout shifts |
-| **Activity buffer** (last 30s) | Background capture of interactions, network, and errors without explicit recording |
-| **Run an audit** | Console errors, network failures, performance metrics, accessibility issues |
-| **Snapshot & diff DOM** | Capture DOM state, compare before/after to see what changed |
+| Action                                | What gets captured                                                                 |
+| ------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Cmd+Shift+X** then click an element | Tag, classes, attributes, computed styles, parent context, related console errors  |
+| **Cmd+Shift+X** then drag a region    | Screenshot, all elements within bounds, DOM structure, visual analysis             |
+| **Record a flow** (via widget)        | Clicks, scrolls, inputs, network requests, console errors, layout shifts           |
+| **Activity buffer** (last 30s)        | Background capture of interactions, network, and errors without explicit recording |
+| **Run an audit**                      | Console errors, network failures, performance metrics, accessibility issues        |
+| **Snapshot & diff DOM**               | Capture DOM state, compare before/after to see what changed                        |
 
 All data flows through [MCP](https://modelcontextprotocol.io) so any compatible assistant can access it.
 
