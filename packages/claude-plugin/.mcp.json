@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "clueprint": {
+      "command": "npx",
+      "args": ["clueprint"]
+    }
+  }
+}

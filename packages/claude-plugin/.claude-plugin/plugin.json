@@ -1,0 +1,12 @@
+{
+  "name": "clueprint",
+  "version": "0.1.0",
+  "description": "Browser context capture for Claude Code. Inspect elements, audit pages, and debug frontend issues.",
+  "author": {
+    "name": "Clueprint"
+  },
+  "homepage": "https://github.com/anthropics/clueprint",
+  "repository": "https://github.com/anthropics/clueprint",
+  "license": "MIT",
+  "keywords": ["browser", "frontend", "css", "debugging", "inspect", "audit"]
+}

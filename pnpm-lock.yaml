@@ -105,6 +105,28 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
+  packages/vscode-extension:
+    dependencies:
+      ws:
+        specifier: ^8.16.0
+        version: 8.19.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.30
+      '@types/vscode':
+        specifier: ^1.85.0
+        version: 1.108.1
+      '@types/ws':
+        specifier: ^8.5.10
+        version: 8.18.1
+      esbuild:
+        specifier: ^0.20.0
+        version: 0.20.2
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+
 packages:
 
   /@alloc/quick-lru@5.2.0:
@@ -611,6 +633,10 @@ packages:
 
   /@types/tinycolor2@1.4.6:
     resolution: {integrity: sha512-iEN8J0BoMnsWBqjVbWH/c0G0Hh7O21lpR2/+PrvAVgWdzL7eexIFm4JN/Wn10PTcmNdtS6U67r499mlWMXOxNw==}
+
+  /@types/vscode@1.108.1:
+    resolution: {integrity: sha512-DerV0BbSzt87TbrqmZ7lRDIYaMiqvP8tmJTzW2p49ZBVtGUnGAu2RGQd1Wv4XMzEVUpaHbsemVM5nfuQJj7H6w==}
+    dev: true
 
   /@types/ws@8.18.1:
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}

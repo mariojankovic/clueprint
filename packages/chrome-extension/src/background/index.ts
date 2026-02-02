@@ -152,6 +152,87 @@ function sendToMCP(message: object): void {
 }
 
 /**
+ * Show notification when context is captured
+ */
+const notificationCommands: Record<string, string> = {};
+
+function showCaptureNotification(type: 'element' | 'region' | 'audit' | 'recording'): void {
+  const config = {
+    element: {
+      title: 'Element Captured',
+      message: 'Click to copy command for Claude Code',
+      command: '/clueprint:inspect',
+    },
+    region: {
+      title: 'Region Captured',
+      message: 'Click to copy command for Claude Code',
+      command: '/clueprint:inspect',
+    },
+    audit: {
+      title: 'Page Audited',
+      message: 'Click to copy command for Claude Code',
+      command: '/clueprint:audit',
+    },
+    recording: {
+      title: 'Recording Stopped',
+      message: 'Click to copy command for Claude Code',
+      command: '/clueprint:recording',
+    },
+  };
+
+  const { title, message, command } = config[type];
+  const notificationId = `clueprint-${type}-${Date.now()}`;
+
+  // Store command for this notification
+  notificationCommands[notificationId] = command;
+
+  chrome.notifications.create(notificationId, {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/clueprint.png'),
+    title,
+    message,
+    requireInteraction: false,
+  });
+
+  // Auto-clear after 5 seconds
+  setTimeout(() => {
+    chrome.notifications.clear(notificationId);
+    delete notificationCommands[notificationId];
+  }, 5000);
+}
+
+// Handle notification clicks - copy command to clipboard
+chrome.notifications.onClicked.addListener((notificationId) => {
+  const command = notificationCommands[notificationId];
+  if (command) {
+    // Copy to clipboard via content script
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (tab?.id) {
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: (cmd: string) => {
+            navigator.clipboard.writeText(cmd).then(() => {
+              // Show brief feedback
+              const toast = document.createElement('div');
+              toast.textContent = `Copied: ${cmd}`;
+              toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;padding:8px 16px;border-radius:8px;font-family:system-ui;font-size:14px;z-index:2147483647;animation:fadeOut 2s forwards';
+              const style = document.createElement('style');
+              style.textContent = '@keyframes fadeOut{0%,70%{opacity:1}100%{opacity:0}}';
+              toast.appendChild(style);
+              document.body.appendChild(toast);
+              setTimeout(() => toast.remove(), 2000);
+            });
+          },
+          args: [command],
+        });
+      }
+    });
+    delete notificationCommands[notificationId];
+  }
+  chrome.notifications.clear(notificationId);
+});
+
+/**
  * Handle messages from MCP server
  */
 function handleMCPMessage(message: { type: string; id?: string; payload?: unknown }): void {
@@ -256,12 +337,19 @@ function handleMessage(
 
       addToBuffer('element_select', { selector: (message.payload as InspectCapture).element.selector });
 
+      // Show notification
+      showCaptureNotification('element');
+
       sendResponse({ success: true });
       break;
 
     case 'REGION_SELECTED':
       state.currentSelection = message.payload as FreeSelectCapture;
       sendToMCP({ type: 'REGION_SELECTED', payload: state.currentSelection });
+
+      // Show notification
+      showCaptureNotification('region');
+
       sendResponse({ success: true });
       break;
 
@@ -379,6 +467,10 @@ function handleMessage(
     case 'STOP_RECORDING':
       const rec = stopFlowRecording();
       sendToMCP({ type: 'RECORDING_STOPPED', payload: rec });
+
+      // Show notification
+      if (rec) showCaptureNotification('recording');
+
       sendResponse({ success: true, recording: rec });
       break;
 
