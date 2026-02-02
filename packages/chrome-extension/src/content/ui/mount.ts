@@ -4,10 +4,10 @@
  */
 
 import { mount, unmount } from 'svelte';
-import InspectPicker from '../../shared/components/InspectPicker.svelte';
-import RegionPicker from '../../shared/components/RegionPicker.svelte';
+import Picker from '../../shared/components/Picker.svelte';
 import Toast from '../../shared/components/Toast.svelte';
 import ConfirmationToast from '../../shared/components/ConfirmationToast.svelte';
+import type { CaptureOptions, SourceInfo, QueuedElement } from '../../types';
 
 const FONT_URL = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&display=swap';
 
@@ -30,6 +30,7 @@ function injectFont(): void {
 
 /**
  * Create a Shadow DOM host element at a fixed position
+ * Ensures the element stays fully within viewport bounds
  */
 function createShadowHost(
   id: string,
@@ -44,23 +45,38 @@ function createShadowHost(
   const existing = document.getElementById(id);
   if (existing) existing.remove();
 
-  // Smart vertical positioning: show below click if space, otherwise above
-  const spaceBelow = window.innerHeight - y;
-  const spaceAbove = y;
+  const padding = 12; // Minimum distance from viewport edges
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  // Smart vertical positioning: prefer below click, then above, then top of viewport
+  const spaceBelow = viewportHeight - y - padding;
+  const spaceAbove = y - padding;
   let top: number;
-  if (spaceBelow >= maxHeight + 10) {
-    // Enough space below
-    top = y + 10;
-  } else if (spaceAbove >= maxHeight + 10) {
-    // Position above the click point
-    top = y - maxHeight - 10;
+
+  if (spaceBelow >= maxHeight) {
+    // Enough space below - position just below the click
+    top = y + padding;
+  } else if (spaceAbove >= maxHeight) {
+    // Enough space above - position above the click
+    top = y - maxHeight - padding;
   } else {
-    // Not enough space either way, position at best available
-    top = Math.max(10, Math.min(y + 10, window.innerHeight - maxHeight - 10));
+    // Not enough space either way - center vertically in viewport
+    top = Math.max(padding, (viewportHeight - maxHeight) / 2);
   }
 
-  // Smart horizontal positioning
-  const left = Math.min(x + 10, window.innerWidth - maxWidth - 10);
+  // Smart horizontal positioning: prefer right of click, then left, then edge
+  let left = x + padding;
+  if (left + maxWidth > viewportWidth - padding) {
+    // Would overflow right - try left of click
+    left = x - maxWidth - padding;
+  }
+
+  // Final clamp to ensure we're always within viewport
+  const maxTop = Math.max(padding, viewportHeight - maxHeight - padding);
+  const maxLeft = Math.max(padding, viewportWidth - maxWidth - padding);
+  top = Math.max(padding, Math.min(top, maxTop));
+  left = Math.max(padding, Math.min(left, maxLeft));
 
   // Create host element
   const host = document.createElement('div');
@@ -68,7 +84,7 @@ function createShadowHost(
   host.style.cssText = `
     position: fixed;
     top: ${top}px;
-    left: ${Math.max(10, left)}px;
+    left: ${left}px;
     z-index: 2147483647;
   `;
 
@@ -86,7 +102,9 @@ function createShadowHost(
   return { host, shadow };
 }
 
-interface PickerContext {
+// Element mode context
+export interface ElementPickerContext {
+  mode: 'element';
   tag: string;
   attrs: Array<{ name: string; value: string }>;
   textContent: string;
@@ -95,20 +113,30 @@ interface PickerContext {
   pageUrl: string;
   childCount: number;
   styles: Array<{ prop: string; value: string }>;
+  sourceInfo?: SourceInfo;
+  queueCount?: number;
+  queuedElements?: QueuedElement[];
+}
+
+export type PickerContext = ElementPickerContext;
+
+interface ElementCallbacks {
+  onChangeElement?: (element: Element) => ElementPickerContext;
+  onRemoveQueuedElement?: (index: number) => void;
 }
 
 /**
- * Mount Inspect Picker at position
+ * Mount unified Picker at position
  */
-export function mountInspectPicker(
+export function mountPicker(
   x: number,
   y: number,
   context: PickerContext,
-  onSelect: (intent: 'tag' | 'fix' | 'beautify') => void,
+  onCapture: (options: CaptureOptions) => void,
   onClose: () => void,
-  onChangeElement?: (element: Element) => PickerContext
+  callbacks?: ElementCallbacks
 ): { cleanup: () => void } {
-  const { host, shadow } = createShadowHost('ai-devtools-intent-picker', x, y, 420, 380);
+  const { host, shadow } = createShadowHost('ai-devtools-intent-picker', x, y, 520, 380);
 
   // Create mount target inside shadow
   const target = document.createElement('div');
@@ -116,6 +144,7 @@ export function mountInspectPicker(
 
   let component: ReturnType<typeof mount> | null = null;
   let parentHighlight: HTMLElement | null = null;
+  let queuedElementHighlight: HTMLElement | null = null;
   let currentContext = context;
 
   const removeParentHighlight = () => {
@@ -125,8 +154,16 @@ export function mountInspectPicker(
     }
   };
 
+  const removeQueuedElementHighlight = () => {
+    if (queuedElementHighlight) {
+      queuedElementHighlight.remove();
+      queuedElementHighlight = null;
+    }
+  };
+
   const cleanup = () => {
     removeParentHighlight();
+    removeQueuedElementHighlight();
     if (component) {
       unmount(component);
       component = null;
@@ -139,11 +176,12 @@ export function mountInspectPicker(
     onClose();
   };
 
-  const handleSelect = (intent: 'tag' | 'fix' | 'beautify') => {
+  const handleCapture = (options: CaptureOptions) => {
     cleanup();
-    onSelect(intent);
+    onCapture(options);
   };
 
+  // Element-specific handlers
   const handleHighlightParent = (index: number) => {
     const el = currentContext.parentElements[index];
     if (!el) return;
@@ -171,13 +209,45 @@ export function mountInspectPicker(
     removeParentHighlight();
   };
 
+  const handleHighlightQueuedElement = (index: number) => {
+    const item = currentContext.queuedElements?.[index];
+    if (!item) return;
+    const rect = item.element.getBoundingClientRect();
+    if (!queuedElementHighlight) {
+      queuedElementHighlight = document.createElement('div');
+      queuedElementHighlight.style.cssText = `
+        position: fixed;
+        pointer-events: none;
+        border: 2px solid rgba(255, 255, 255, 0.6);
+        background: rgba(255, 255, 255, 0.08);
+        z-index: 2147483646;
+        border-radius: 4px;
+        transition: all 0.1s ease;
+      `;
+      document.body.appendChild(queuedElementHighlight);
+    }
+    queuedElementHighlight.style.top = `${rect.top}px`;
+    queuedElementHighlight.style.left = `${rect.left}px`;
+    queuedElementHighlight.style.width = `${rect.width}px`;
+    queuedElementHighlight.style.height = `${rect.height}px`;
+  };
+
+  const handleUnhighlightQueuedElement = () => {
+    removeQueuedElementHighlight();
+  };
+
+  const handleRemoveQueuedElement = (index: number) => {
+    removeQueuedElementHighlight();
+    callbacks?.onRemoveQueuedElement?.(index);
+  };
+
   const handleSelectParent = (index: number) => {
-    if (!onChangeElement) return;
+    if (!callbacks?.onChangeElement) return;
     const el = currentContext.parentElements[index];
     if (!el) return;
 
     // Get new context from inspect-mode (updates highlight + lockedElement)
-    const newContext = onChangeElement(el);
+    const newContext = callbacks.onChangeElement(el);
     currentContext = newContext;
 
     // Remove parent highlight
@@ -189,9 +259,10 @@ export function mountInspectPicker(
       component = null;
     }
 
-    component = mount(InspectPicker, {
+    component = mount(Picker, {
       target,
       props: {
+        mode: 'element',
         tag: newContext.tag,
         attrs: newContext.attrs,
         textContent: newContext.textContent,
@@ -199,18 +270,26 @@ export function mountInspectPicker(
         pageUrl: newContext.pageUrl,
         childCount: newContext.childCount,
         styles: newContext.styles,
-        onSelect: handleSelect,
+        sourceInfo: newContext.sourceInfo,
+        queueCount: (context as ElementPickerContext).queueCount,
+        queuedElements: (context as ElementPickerContext).queuedElements,
+        onCapture: handleCapture,
         onClose: handleClose,
         onHighlightParent: handleHighlightParent,
         onUnhighlightParent: handleUnhighlightParent,
         onSelectParent: handleSelectParent,
+        onHighlightQueuedElement: handleHighlightQueuedElement,
+        onUnhighlightQueuedElement: handleUnhighlightQueuedElement,
+        onRemoveQueuedElement: handleRemoveQueuedElement,
       },
     });
   };
 
-  component = mount(InspectPicker, {
+  // Mount element picker
+  component = mount(Picker, {
     target,
     props: {
+      mode: 'element',
       tag: context.tag,
       attrs: context.attrs,
       textContent: context.textContent,
@@ -218,74 +297,46 @@ export function mountInspectPicker(
       pageUrl: context.pageUrl,
       childCount: context.childCount,
       styles: context.styles,
-      onSelect: handleSelect,
+      sourceInfo: context.sourceInfo,
+      queueCount: context.queueCount,
+      queuedElements: context.queuedElements,
+      onCapture: handleCapture,
       onClose: handleClose,
       onHighlightParent: handleHighlightParent,
       onUnhighlightParent: handleUnhighlightParent,
       onSelectParent: handleSelectParent,
+      onHighlightQueuedElement: handleHighlightQueuedElement,
+      onUnhighlightQueuedElement: handleUnhighlightQueuedElement,
+      onRemoveQueuedElement: handleRemoveQueuedElement,
     },
   });
 
   return { cleanup };
 }
 
-interface RegionContext {
-  width: number;
-  height: number;
-  elementCount: number;
-  tagBreakdown: Array<{ tag: string; count: number }>;
-  ancestorLabel: string;
-  title: string;
-  labels: string[];
-  pageUrl: string;
-}
-
-/**
- * Mount Region Picker at position
- */
-export function mountRegionPicker(
+// Legacy exports for backwards compatibility
+export function mountInspectPicker(
   x: number,
   y: number,
-  context: RegionContext,
-  onSelect: (intent: 'tag' | 'fix' | 'beautify', includeScreenshot: boolean) => void,
-  onClose: () => void
+  context: Omit<ElementPickerContext, 'mode'>,
+  onCapture: (options: CaptureOptions) => void,
+  onClose: () => void,
+  onChangeElement?: (element: Element) => Omit<ElementPickerContext, 'mode'>,
+  onRemoveQueuedElement?: (index: number) => void
 ): { cleanup: () => void } {
-  const { host, shadow } = createShadowHost('ai-devtools-intent-picker', x, y, 320, 360);
-
-  // Create mount target inside shadow
-  const target = document.createElement('div');
-  shadow.appendChild(target);
-
-  let component: ReturnType<typeof mount> | null = null;
-
-  const cleanup = () => {
-    if (component) {
-      unmount(component);
-      component = null;
+  return mountPicker(
+    x,
+    y,
+    { ...context, mode: 'element' },
+    onCapture,
+    onClose,
+    {
+      onChangeElement: onChangeElement
+        ? (el) => ({ ...onChangeElement(el), mode: 'element' })
+        : undefined,
+      onRemoveQueuedElement,
     }
-    host.remove();
-  };
-
-  const handleClose = () => {
-    cleanup();
-    onClose();
-  };
-
-  const handleSelect = (intent: 'tag' | 'fix' | 'beautify', includeScreenshot: boolean) => {
-    cleanup();
-    onSelect(intent, includeScreenshot);
-  };
-
-  component = mount(RegionPicker, {
-    target,
-    props: {
-      ...context,
-      onSelect: handleSelect,
-      onClose: handleClose,
-    },
-  });
-
-  return { cleanup };
+  );
 }
 
 /**

@@ -155,6 +155,36 @@ export function formatElementReport(capture: InspectCapture): string {
     }
   }
 
+  // Improvement suggestions (responsive and accessibility)
+  if (capture.improvements) {
+    const { responsive, accessibility } = capture.improvements;
+    const hasImprovements = responsive.length > 0 || accessibility.length > 0;
+
+    if (hasImprovements) {
+      lines.push('');
+      lines.push('IMPROVEMENT SUGGESTIONS:');
+      lines.push('─'.repeat(40));
+
+      // Responsive issues
+      for (const issue of responsive.slice(0, 5)) {
+        const severity = issue.severity === 'error' ? '❌' : '⚠️';
+        const location = issue.fileLine ? ` → ${issue.fileLine}` : '';
+        lines.push(`${severity} [RESPONSIVE] ${issue.message}${location}`);
+        lines.push(`   💡 ${issue.suggestion}`);
+      }
+
+      // Accessibility issues
+      for (const issue of accessibility.slice(0, 5)) {
+        const severity = issue.severity === 'critical' ? '❌' : issue.severity === 'serious' ? '⚠️' : '💡';
+        const location = issue.fileLine ? ` → ${issue.fileLine}` : '';
+        lines.push(`${severity} [A11Y] ${issue.message}${location}`);
+        lines.push(`   💡 ${issue.suggestion}`);
+      }
+
+      lines.push('');
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -169,9 +199,17 @@ export function formatRegionReport(capture: FreeSelectCapture): string {
   lines.push('━'.repeat(56));
   lines.push('');
 
-  // Intent
-  lines.push(`INTENT: ${capture.intent.toUpperCase()}`);
-  lines.push('');
+  // Capture options summary
+  const opts = capture.options;
+  const optsSummary = [
+    opts.includeScreenshot ? 'screenshot' : null,
+    opts.includeConsoleLogs ? 'console' : null,
+    opts.suggestImprovements ? 'improvements' : null,
+  ].filter(Boolean).join(', ');
+  if (optsSummary) {
+    lines.push(`CAPTURED: ${optsSummary}`);
+    lines.push('');
+  }
 
   // Elements
   lines.push(`ELEMENTS (${capture.elements.length}):`);
@@ -224,6 +262,35 @@ export function formatRegionReport(capture: FreeSelectCapture): string {
       lines.push(`  ❌ ${error.message.slice(0, 80)}`);
     }
     lines.push('');
+  }
+
+  // Improvement suggestions (responsive and accessibility)
+  if (capture.improvements) {
+    const { responsive, accessibility } = capture.improvements;
+    const hasImprovements = responsive.length > 0 || accessibility.length > 0;
+
+    if (hasImprovements) {
+      lines.push('IMPROVEMENT SUGGESTIONS:');
+      lines.push('─'.repeat(40));
+
+      // Responsive issues
+      for (const issue of responsive.slice(0, 5)) {
+        const severity = issue.severity === 'error' ? '❌' : '⚠️';
+        const location = issue.fileLine ? ` → ${issue.fileLine}` : '';
+        lines.push(`${severity} [RESPONSIVE] ${issue.message}${location}`);
+        lines.push(`   💡 ${issue.suggestion}`);
+      }
+
+      // Accessibility issues
+      for (const issue of accessibility.slice(0, 5)) {
+        const severity = issue.severity === 'critical' ? '❌' : issue.severity === 'serious' ? '⚠️' : '💡';
+        const location = issue.fileLine ? ` → ${issue.fileLine}` : '';
+        lines.push(`${severity} [A11Y] ${issue.message}${location}`);
+        lines.push(`   💡 ${issue.suggestion}`);
+      }
+
+      lines.push('');
+    }
   }
 
   return lines.join('\n');

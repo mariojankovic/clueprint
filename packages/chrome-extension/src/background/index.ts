@@ -152,6 +152,35 @@ function sendToMCP(message: object): void {
 }
 
 /**
+ * Show toast notification and copy command to clipboard via content script
+ */
+async function showCaptureToast(type: 'element' | 'region' | 'audit' | 'recording'): Promise<void> {
+  const commands: Record<string, string> = {
+    element: '/clueprint:inspect',
+    region: '/clueprint:inspect',
+    audit: '/clueprint:audit',
+    recording: '/clueprint:recording',
+  };
+
+  const command = commands[type];
+
+  // Find active tab to show toast and copy
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tab?.id) {
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'SHOW_CAPTURE_TOAST',
+        payload: { command },
+      }).catch(() => {
+        // Tab might not have content script, ignore
+      });
+    }
+  } catch {
+    // Ignore errors
+  }
+}
+
+/**
  * Handle messages from MCP server
  */
 function handleMCPMessage(message: { type: string; id?: string; payload?: unknown }): void {
@@ -256,12 +285,19 @@ function handleMessage(
 
       addToBuffer('element_select', { selector: (message.payload as InspectCapture).element.selector });
 
+      // Show toast and copy command
+      showCaptureToast('element');
+
       sendResponse({ success: true });
       break;
 
     case 'REGION_SELECTED':
       state.currentSelection = message.payload as FreeSelectCapture;
       sendToMCP({ type: 'REGION_SELECTED', payload: state.currentSelection });
+
+      // Show toast and copy command
+      showCaptureToast('region');
+
       sendResponse({ success: true });
       break;
 
@@ -379,6 +415,10 @@ function handleMessage(
     case 'STOP_RECORDING':
       const rec = stopFlowRecording();
       sendToMCP({ type: 'RECORDING_STOPPED', payload: rec });
+
+      // Show toast and copy command
+      if (rec) showCaptureToast('recording');
+
       sendResponse({ success: true, recording: rec });
       break;
 

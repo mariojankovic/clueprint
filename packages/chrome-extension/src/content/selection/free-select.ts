@@ -2,21 +2,10 @@
  * Unified Select Mode - Click = element inspect, Drag = region select
  */
 
-import { getSelector } from '../utils/selector';
-import { getAestheticStyles } from '../utils/styles';
-import { getElementsInRegion, getDOMStructure } from '../capture/dom';
-import { detectSourceInfo } from '../capture/source-detect';
-import { captureRegionScreenshot } from '../capture/screenshot';
-import { mountRegionPicker, showConfirmation } from '../ui/mount';
-import { inspectElementAtPoint } from './inspect-mode';
-import type {
-  FreeSelectCapture,
-  Intent,
-  BrowserContext,
-  RegionElement,
-  AestheticAnalysis,
-  ElementRect,
-} from '../../types';
+import { getElementsInRegion } from '../capture/dom';
+import { showToast } from '../ui/mount';
+import { inspectElementAtPoint, addToQueue, isInQueue, getQueueCount, removeFromQueue, refreshPicker, clearQueue, bulkAddToQueue } from './inspect-mode';
+import type { ElementRect } from '../../types';
 
 let isFreeSelectActive = false;
 let isDrawing = false;
@@ -33,6 +22,58 @@ let hoverHighlight: HTMLElement | null = null;
 let hoverLabel: HTMLElement | null = null;
 let hoveredElement: Element | null = null;
 let blockNextClick = false; // Block the click event that follows mouseup on element select
+
+/**
+ * Check if an element is part of our UI (picker, widget, highlights, etc.)
+ * Walks up the DOM tree and through Shadow DOM boundaries
+ */
+function isElementOurUI(element: Element | null): boolean {
+  let el: Element | null = element;
+  while (el) {
+    if (el instanceof HTMLElement) {
+      // Check for our element IDs
+      if (el.id?.startsWith('ai-devtools-') || el.id?.startsWith('clueprint-')) {
+        return true;
+      }
+      // Check for data attributes we use
+      if (el.hasAttribute('data-widget-pill') || el.hasAttribute('data-picker')) {
+        return true;
+      }
+      // Check for our class names
+      if (el.classList?.contains('ai-devtools-queue-highlight') || el.classList?.contains('ai-devtools-region-highlight')) {
+        return true;
+      }
+    }
+    // Walk up to parent or shadow host
+    el = el.parentElement || (el.getRootNode() as ShadowRoot)?.host || null;
+  }
+  return false;
+}
+
+/**
+ * Check if an event originated from our UI elements (picker, widget, highlights, etc.)
+ * Uses composedPath to check through Shadow DOM boundaries
+ */
+function isOurUIElement(event: Event): boolean {
+  const path = event.composedPath();
+  for (const el of path) {
+    if (el instanceof HTMLElement) {
+      // Check for our element IDs
+      if (el.id?.startsWith('ai-devtools-') || el.id?.startsWith('clueprint-')) {
+        return true;
+      }
+      // Check for data attributes we use
+      if (el.hasAttribute('data-widget-pill') || el.hasAttribute('data-picker')) {
+        return true;
+      }
+      // Check for our class names
+      if (el.classList?.contains('ai-devtools-queue-highlight') || el.classList?.contains('ai-devtools-region-highlight')) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 /**
  * Create selection rectangle overlay
@@ -183,17 +224,13 @@ function handleKeyDown(event: KeyboardEvent): void {
 function handleMouseDown(event: MouseEvent): void {
   if (!isFreeSelectActive) return;
 
-  // Ignore clicks on our own UI elements
-  if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
-
-  // If picker is shown, don't start new selection
-  // Let the click propagate to close the picker
-  if (document.getElementById('ai-devtools-intent-picker')) return;
+  // Ignore clicks on our own UI elements (picker, widget, highlights, etc.)
+  if (isOurUIElement(event)) return;
 
   event.preventDefault();
   event.stopPropagation();
 
-  // Clear highlights from any previous selection
+  // Clear region highlights from any previous drag (not queue highlights)
   clearHighlights();
 
   // Start pending drag — we don't know yet if this is a click or drag
@@ -245,14 +282,21 @@ function handleMouseMove(event: MouseEvent): void {
   }
 
   // No button held: show hover highlight on element under cursor
-  if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
-  if (document.getElementById('ai-devtools-intent-picker')) return;
+  // (also works when picker is shown so user can see what they're about to add)
+  if (isOurUIElement(event)) return;
 
   const element = event.target as Element;
   if (element && element !== hoveredElement) {
     hoveredElement = element;
     updateHoverHighlight(element);
   }
+}
+
+/**
+ * Check if picker is currently shown
+ */
+function isPickerShown(): boolean {
+  return !!document.getElementById('ai-devtools-intent-picker');
 }
 
 /**
@@ -271,14 +315,39 @@ function handleMouseUp(event: MouseEvent): void {
     // Block the subsequent click event from reaching the page
     blockNextClick = true;
 
-    // Hide hover highlight and deactivate mode, then trigger inspect
-    hideHoverHighlight();
-    deactivateFreeSelectDrag();
-
     const elementAtPoint = document.elementFromPoint(endX, endY);
-    if (elementAtPoint && !elementAtPoint.id?.startsWith('ai-devtools-')) {
-      inspectElementAtPoint(elementAtPoint, endX, endY);
+    if (!elementAtPoint || isElementOurUI(elementAtPoint)) {
+      // Only deactivate if no picker is shown
+      if (!isPickerShown()) {
+        hideHoverHighlight();
+        deactivateFreeSelectDrag();
+      }
+      return;
     }
+
+    // If picker is already shown, toggle element in queue (Figma-style)
+    if (isPickerShown()) {
+      if (isInQueue(elementAtPoint)) {
+        removeFromQueue(elementAtPoint);
+        const count = getQueueCount();
+        if (count > 0) {
+          showToast(`${count} selected`, 'info', 1500);
+        }
+      } else {
+        addToQueue(elementAtPoint);
+        const count = getQueueCount();
+        showToast(`${count} selected`, 'success', 1500);
+      }
+      // Refresh picker to show updated selection
+      refreshPicker();
+      return;
+    }
+
+    // First selection: add to queue and show picker
+    addToQueue(elementAtPoint);
+    hideHoverHighlight();
+    // Keep free-select active so user can click more elements
+    inspectElementAtPoint(elementAtPoint, endX, endY);
     return;
   }
 
@@ -298,7 +367,6 @@ function handleMouseUp(event: MouseEvent): void {
 
   const endX = event.clientX;
   const endY = event.clientY;
-  updateHighlights(endX, endY);
 
   // Calculate final rect
   const rect: ElementRect = {
@@ -308,8 +376,29 @@ function handleMouseUp(event: MouseEvent): void {
     height: Math.abs(endY - startY),
   };
 
-  // Show intent picker
-  showRegionIntentPicker(rect, endX, endY);
+  // Get elements in the dragged region
+  const domRect = new DOMRect(rect.left, rect.top, rect.width, rect.height);
+  const elements = getElementsInRegion(domRect);
+
+  // Clear region highlights (blue dashed ones) - we'll use queue highlights instead
+  clearHighlights();
+  removeSelection();
+
+  if (elements.length === 0) {
+    showToast('No elements in region', 'info', 1500);
+    return;
+  }
+
+  // Bulk add all elements to the queue with the region rect for screenshot
+  bulkAddToQueue(elements, { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+
+  // Hide hover highlight and show element picker
+  hideHoverHighlight();
+
+  // Use the first element as the "main" element for the picker
+  const mainElement = elements[0];
+  showToast(`${elements.length} elements selected`, 'success', 1500);
+  inspectElementAtPoint(mainElement, endX, endY);
 }
 
 /**
@@ -407,313 +496,6 @@ function updateHighlights(endX: number, endY: number): void {
 }
 
 /**
- * Get region context for the picker UI
- */
-function getRegionContext(rect: ElementRect) {
-  const domRect = new DOMRect(rect.left, rect.top, rect.width, rect.height);
-  const elements = getElementsInRegion(domRect);
-
-  // Count elements by tag
-  const tagCounts: Record<string, number> = {};
-  for (const el of elements) {
-    const tag = el.tagName.toLowerCase();
-    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-  }
-
-  // Sort by count descending, take top 6
-  const tagBreakdown = Object.entries(tagCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([tag, count]) => ({ tag, count }));
-
-  // Find common ancestor
-  const ancestor = findCommonAncestor(elements);
-  let ancestorLabel = '';
-  if (ancestor && ancestor !== document.body) {
-    const tag = ancestor.tagName.toLowerCase();
-    const id = ancestor.id ? `#${ancestor.id}` : '';
-    const cls = ancestor.classList.length > 0 ? `.${ancestor.classList[0]}` : '';
-    ancestorLabel = tag + id + cls;
-  }
-
-  // Find first heading as region title
-  const headingTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
-  let title = '';
-  for (const el of elements) {
-    if (headingTags.includes(el.tagName.toLowerCase())) {
-      const text = el.textContent?.trim() || '';
-      if (text) {
-        title = text.length > 50 ? text.slice(0, 47) + '...' : text;
-        break;
-      }
-    }
-  }
-
-  // Collect interactive element labels (buttons, links)
-  const labels: string[] = [];
-  const seenLabels = new Set<string>();
-  for (const el of elements) {
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'button' || tag === 'a' || el.getAttribute('role') === 'button') {
-      const text = el.textContent?.trim() || '';
-      if (text && text.length <= 30 && !seenLabels.has(text)) {
-        seenLabels.add(text);
-        labels.push(text);
-        if (labels.length >= 6) break;
-      }
-    }
-  }
-
-  return {
-    width: Math.round(rect.width),
-    height: Math.round(rect.height),
-    elementCount: elements.length,
-    tagBreakdown,
-    ancestorLabel,
-    title,
-    labels,
-    pageUrl: window.location.hostname + window.location.pathname,
-  };
-}
-
-/**
- * Show intent picker for region selection using Shadow DOM
- */
-function showRegionIntentPicker(rect: ElementRect, x: number, y: number): void {
-  const context = getRegionContext(rect);
-
-  const { cleanup } = mountRegionPicker(
-    x,
-    y,
-    context,
-    async (intent, includeScreenshot) => {
-      pickerCleanup = null;
-      await selectRegion(rect, intent, includeScreenshot);
-    },
-    () => {
-      pickerCleanup = null;
-      hideSelection();
-      deactivateFreeSelectDrag();
-    }
-  );
-  pickerCleanup = cleanup;
-}
-
-/**
- * Select region and capture data
- *
- * Intent-specific data:
- * - tag: Just element list (minimal context for AI awareness)
- * - fix: Include console errors, network failures (debugging context)
- * - beautify: Include screenshot and aesthetic analysis (visual context)
- */
-async function selectRegion(rect: ElementRect, intent: Intent, includeScreenshot: boolean): Promise<void> {
-  // Get browser context only for fix intent
-  const browserContext = intent === 'fix'
-    ? await getBrowserContext()
-    : { errors: [], networkFailures: [] };
-
-  // Capture screenshot if user opted in
-  const screenshot = includeScreenshot
-    ? (await captureRegionScreenshot(rect) || '')
-    : '';
-
-  // Get elements in region
-  const domRect = new DOMRect(rect.left, rect.top, rect.width, rect.height);
-  const elements = getElementsInRegion(domRect);
-
-  // Extract element info
-  const regionElements: RegionElement[] = elements.slice(0, 20).map(el => ({
-    selector: getSelector(el),
-    tag: el.tagName.toLowerCase(),
-    text: el.textContent?.trim().slice(0, 50) || '',
-    role: el.getAttribute('role') || getSemanticRole(el),
-    styles: getAestheticStyles(el),
-    hasInteractionStates: hasInteractionStates(el),
-    sourceInfo: detectSourceInfo(el) || undefined,
-  }));
-
-  // Build structure representation
-  const commonAncestor = findCommonAncestor(elements);
-  const structure = commonAncestor ? getDOMStructure(commonAncestor, 4) : '';
-
-  // Aesthetic analysis only for beautify intent
-  let aestheticAnalysis: AestheticAnalysis | undefined;
-  if (intent === 'beautify') {
-    aestheticAnalysis = analyzeAesthetics(elements);
-  }
-
-  const capture: FreeSelectCapture = {
-    mode: 'free-select',
-    intent,
-    timestamp: Date.now(),
-    region: rect,
-    screenshot,
-    elements: regionElements,
-    structure,
-    aestheticAnalysis,
-    browserContext,
-  };
-
-  // Send to background
-  await chrome.runtime.sendMessage({
-    type: 'REGION_SELECTED',
-    payload: capture,
-  });
-
-  // Show confirmation
-  showRegionConfirmation(rect);
-
-  // Cleanup
-  hideSelection();
-  deactivateFreeSelectDrag();
-}
-
-/**
- * Get semantic role for element
- */
-function getSemanticRole(element: Element): string {
-  const tag = element.tagName.toLowerCase();
-  const roleMap: Record<string, string> = {
-    a: 'link',
-    button: 'button',
-    input: 'input',
-    select: 'select',
-    textarea: 'textbox',
-    h1: 'heading',
-    h2: 'heading',
-    h3: 'heading',
-    h4: 'heading',
-    h5: 'heading',
-    h6: 'heading',
-    img: 'image',
-    nav: 'navigation',
-    main: 'main',
-    header: 'banner',
-    footer: 'contentinfo',
-    aside: 'complementary',
-    form: 'form',
-    table: 'table',
-    ul: 'list',
-    ol: 'list',
-    li: 'listitem',
-  };
-  return roleMap[tag] || 'generic';
-}
-
-/**
- * Check if element has :hover/:focus styles defined
- */
-function hasInteractionStates(element: Element): boolean {
-  // This is a heuristic - check for common interactive elements
-  const tag = element.tagName.toLowerCase();
-  const interactiveTags = ['a', 'button', 'input', 'select', 'textarea'];
-
-  if (interactiveTags.includes(tag)) return true;
-
-  // Check for cursor: pointer
-  const computed = getComputedStyle(element);
-  return computed.cursor === 'pointer';
-}
-
-/**
- * Analyze aesthetics of elements
- */
-function analyzeAesthetics(elements: Element[]): AestheticAnalysis {
-  const issues: string[] = [];
-  const suggestions: string[] = [];
-  const colorPalette: string[] = [];
-
-  for (const el of elements.slice(0, 10)) {
-    const computed = getComputedStyle(el);
-
-    // Collect colors
-    const colors = [computed.color, computed.backgroundColor, computed.borderColor];
-    for (const color of colors) {
-      if (color && color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)' && !colorPalette.includes(color)) {
-        colorPalette.push(color);
-      }
-    }
-
-    // Check for common issues
-    const tag = el.tagName.toLowerCase();
-
-    if (['button', 'a'].includes(tag)) {
-      if (computed.borderRadius === '0px') {
-        if (!issues.includes('Buttons/links have no border-radius')) {
-          issues.push('Buttons/links have no border-radius');
-          suggestions.push('Add border-radius (4-8px) for softer appearance');
-        }
-      }
-      if (computed.transition === 'all 0s ease 0s' || computed.transition === 'none') {
-        if (!issues.includes('Interactive elements lack transitions')) {
-          issues.push('Interactive elements lack transitions');
-          suggestions.push('Add hover/focus transitions for polish');
-        }
-      }
-    }
-
-    // Check padding
-    const padding = parseInt(computed.padding);
-    if (!isNaN(padding) && padding < 8 && ['button', 'a', 'input'].includes(tag)) {
-      if (!issues.includes('Cramped padding on interactive elements')) {
-        issues.push('Cramped padding on interactive elements');
-        suggestions.push('Increase padding for better touch targets');
-      }
-    }
-  }
-
-  return {
-    issues: issues.slice(0, 5),
-    suggestions: suggestions.slice(0, 5),
-    colorPalette: colorPalette.slice(0, 10),
-  };
-}
-
-/**
- * Find common ancestor of elements
- */
-function findCommonAncestor(elements: Element[]): Element | null {
-  if (elements.length === 0) return null;
-  if (elements.length === 1) return elements[0].parentElement;
-
-  let ancestor: Element | null = elements[0];
-  while (ancestor) {
-    if (elements.every(el => ancestor!.contains(el))) {
-      return ancestor;
-    }
-    ancestor = ancestor.parentElement;
-  }
-  return document.body;
-}
-
-/**
- * Get browser context
- */
-async function getBrowserContext(): Promise<BrowserContext> {
-  try {
-    const response = await chrome.runtime.sendMessage({
-      type: 'GET_BROWSER_CONTEXT',
-    });
-    return response || { errors: [], networkFailures: [] };
-  } catch {
-    return { errors: [], networkFailures: [] };
-  }
-}
-
-/**
- * Show confirmation for region selection
- */
-function showRegionConfirmation(rect: ElementRect): void {
-  showConfirmation(
-    rect.left + rect.width / 2 - 100,
-    rect.top + rect.height / 2 - 20,
-    '✓ Region captured! Tell your AI assistant.',
-    2000
-  );
-}
-
-/**
  * Block native click events during select mode
  */
 function handleClickBlock(event: MouseEvent): void {
@@ -721,16 +503,17 @@ function handleClickBlock(event: MouseEvent): void {
   if (blockNextClick) {
     blockNextClick = false;
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation(); // Stop ALL other click handlers
     return;
   }
 
   if (!isFreeSelectActive) return;
-  if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
-  if (document.getElementById('ai-devtools-intent-picker')) return;
+  // Allow clicks on our UI elements (picker, widget, etc.)
+  if (isOurUIElement(event)) return;
+  if (isPickerShown()) return;
 
   event.preventDefault();
-  event.stopPropagation();
+  event.stopImmediatePropagation(); // Stop ALL other click handlers
 }
 
 /**
@@ -765,6 +548,9 @@ export function deactivateFreeSelectDrag(): void {
   // Clear element highlights and hover highlight
   clearHighlights();
   removeHoverHighlight();
+
+  // Clear the element queue (from inspect-mode)
+  clearQueue();
 
   // Properly cleanup picker (unmounts Svelte component and removes DOM)
   if (pickerCleanup) {

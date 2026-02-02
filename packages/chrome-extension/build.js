@@ -21,12 +21,14 @@ function createSveltePlugin() {
     compilerOptions: {
       css: 'injected', // Inject CSS into component JS
     },
-    // Filter out Tailwind-related warnings (unused CSS selectors from utilities)
+    // Filter out expected warnings
     filterWarnings: (warning) => {
       // Ignore unused CSS selector warnings (from Tailwind utilities)
       if (warning.code === 'css_unused_selector') return false;
       // Ignore quoted attribute warnings (Svelte 5 migration)
       if (warning.code === 'attribute_quoted') return false;
+      // Ignore state_referenced_locally for defaultOptions (we intentionally capture initial value)
+      if (warning.code === 'state_referenced_locally' && warning.message?.includes('defaultOptions')) return false;
       return true;
     },
   });
@@ -111,6 +113,26 @@ function copyStaticFiles() {
     fs.copyFileSync(srcIcon, path.join(distIconsDir, 'clueprint.png'));
   }
 
+  // Copy page-detect.js for framework detection (runs in page context)
+  const contentDir = path.join(distDir, 'content');
+  if (!fs.existsSync(contentDir)) {
+    fs.mkdirSync(contentDir, { recursive: true });
+  }
+  fs.copyFileSync(
+    path.join(__dirname, 'src', 'content', 'capture', 'page-detect.js'),
+    path.join(contentDir, 'page-detect.js')
+  );
+
+  // Copy offscreen HTML
+  const offscreenDir = path.join(distDir, 'offscreen');
+  if (!fs.existsSync(offscreenDir)) {
+    fs.mkdirSync(offscreenDir, { recursive: true });
+  }
+  fs.copyFileSync(
+    path.join(__dirname, 'src', 'offscreen', 'offscreen.html'),
+    path.join(offscreenDir, 'offscreen.html')
+  );
+
   console.log('Static files copied');
 }
 
@@ -130,7 +152,7 @@ async function build() {
     copyStaticFiles();
 
     // Content script (now with Svelte for Shadow DOM UI)
-    await esbuild.build({
+    const contentCtx = await esbuild.context({
       ...buildOptions,
       entryPoints: ['src/content/index.ts'],
       outfile: 'dist/content/index.js',
@@ -140,7 +162,7 @@ async function build() {
     });
 
     // Background service worker
-    await esbuild.build({
+    const backgroundCtx = await esbuild.context({
       ...buildOptions,
       entryPoints: ['src/background/index.ts'],
       outfile: 'dist/background/index.js',
@@ -153,7 +175,7 @@ async function build() {
     );
 
     // Popup (Svelte)
-    await esbuild.build({
+    const popupCtx = await esbuild.context({
       ...buildOptions,
       entryPoints: ['src/popup/main.ts'],
       outfile: 'dist/popup/popup.js',
@@ -163,7 +185,7 @@ async function build() {
     });
 
     // DevTools
-    await esbuild.build({
+    const devtoolsCtx = await esbuild.context({
       ...buildOptions,
       entryPoints: ['src/devtools/devtools.ts'],
       outfile: 'dist/devtools/devtools.js',
@@ -177,7 +199,7 @@ async function build() {
     );
 
     // DevTools Panel (Svelte)
-    await esbuild.build({
+    const panelCtx = await esbuild.context({
       ...buildOptions,
       entryPoints: ['src/devtools/panel.ts'],
       outfile: 'dist/devtools/panel.js',
@@ -186,12 +208,47 @@ async function build() {
       conditions: ['svelte', 'browser'],
     });
 
+    // Offscreen document (for clipboard without focus)
+    const offscreenCtx = await esbuild.context({
+      ...buildOptions,
+      entryPoints: ['src/offscreen/offscreen.ts'],
+      outfile: 'dist/offscreen/offscreen.js',
+      format: 'iife',
+    });
+
+    // Initial build
+    await Promise.all([
+      contentCtx.rebuild(),
+      backgroundCtx.rebuild(),
+      popupCtx.rebuild(),
+      devtoolsCtx.rebuild(),
+      panelCtx.rebuild(),
+      offscreenCtx.rebuild(),
+    ]);
+
     console.log('Build complete!');
 
     if (isWatch) {
-      console.log('Watching for changes...');
-      // In watch mode, we'd set up file watchers
-      // For simplicity, just keep the process running
+      // Start watching all contexts
+      await Promise.all([
+        contentCtx.watch(),
+        backgroundCtx.watch(),
+        popupCtx.watch(),
+        devtoolsCtx.watch(),
+        panelCtx.watch(),
+        offscreenCtx.watch(),
+      ]);
+      console.log('Watching for changes... (Ctrl+C to stop)');
+    } else {
+      // Cleanup contexts when not watching
+      await Promise.all([
+        contentCtx.dispose(),
+        backgroundCtx.dispose(),
+        popupCtx.dispose(),
+        devtoolsCtx.dispose(),
+        panelCtx.dispose(),
+        offscreenCtx.dispose(),
+      ]);
     }
   } catch (error) {
     console.error('Build failed:', error);

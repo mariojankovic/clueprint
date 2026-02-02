@@ -18,14 +18,41 @@ import type { BrowserContext, NetworkEntry, ExtensionMessage } from '../types';
 let isExtensionActive = false;
 let isRecording = false;
 let isBuffering = false;
-let recordingIndicator: HTMLElement | null = null;
 let recordingStartTime: number | null = null;
-let recordingTimerInterval: number | null = null;
 let floatingWidget: HTMLElement | null = null;
 let widgetStateInterval: number | null = null;
+
+// Widget state tracking (to avoid unnecessary remounts)
 let lastWidgetRecordingState = false;
 let lastWidgetBufferingState = false;
 let lastWidgetSelectState = false;
+let lastWidgetCollapsedState = false;
+let lastWidgetCollapsedEdge: 'left' | 'right' | 'top' | 'bottom' | null = null;
+let lastWidgetDraggingState = false;
+let lastWidgetSkipAnimationState = false;
+let lastWidgetToastMessage = '';
+
+// Pending toast message for the widget
+let widgetToastMessage = '';
+
+// Drag state (accessible to widget)
+let isWidgetDragging = false;
+// Skip animation flag - persists briefly after drag ends to prevent entrance animation
+let skipWidgetAnimation = false;
+// Track the last visual state to determine if animation should play on transitions
+type VisualState = 'recording' | 'toast' | 'select' | 'default' | 'collapsed';
+let lastVisualState: VisualState | null = null;
+
+/**
+ * Get the current visual state of the widget
+ */
+function getVisualState(): VisualState {
+  if (widgetCollapsed) return 'collapsed';
+  if (isRecording) return 'recording';
+  if (widgetToastMessage) return 'toast';
+  if (isInspectMode() || isFreeSelectMode()) return 'select';
+  return 'default';
+}
 
 /**
  * Inject Plus Jakarta Sans font for UI elements
@@ -59,15 +86,8 @@ function initialize(): void {
   initInspectMode();
   initFreeSelectMode();
 
-  // Direct shortcut: Cmd+Shift+X for selection mode (click = inspect, drag = region)
-  document.addEventListener('keydown', (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'x') {
-      event.preventDefault();
-      event.stopPropagation();
-      if (isInspectMode()) deactivateInspectMode();
-      toggleFreeSelectDrag();
-    }
-  }, true);
+  // Keyboard shortcut (Cmd+Shift+X) is handled via Chrome's commands API
+  // in the background script. Users can customize it at chrome://extensions/shortcuts
 
   // Listen for messages from background script
   chrome.runtime.onMessage.addListener(handleMessage);
@@ -206,15 +226,33 @@ function handleMessage(
     case 'TOGGLE_WIDGET':
       if (floatingWidget) {
         closeWidget();
+        chrome.storage.local.set({ widgetVisible: false });
+        sendResponse({ success: true, visible: false });
       } else {
         createFloatingWidget();
+        chrome.storage.local.set({ widgetVisible: true });
+        sendResponse({ success: true, visible: true });
       }
-      chrome.storage.local.set({ widgetVisible: !!floatingWidget });
-      sendResponse({ success: true, visible: !!floatingWidget });
       break;
 
     case 'GET_WIDGET_STATE':
       sendResponse({ visible: !!floatingWidget });
+      break;
+
+    case 'SHOW_CAPTURE_TOAST':
+      if (message.payload && typeof message.payload === 'object') {
+        const { command } = message.payload as { command: string };
+        if (command) {
+          // Copy to clipboard
+          navigator.clipboard.writeText(command).then(() => {
+            // Show toast in floating widget
+            showWidgetToast('Copied to clipboard');
+          }).catch(() => {
+            showWidgetToast('Capture complete');
+          });
+        }
+      }
+      sendResponse({ success: true });
       break;
 
     default:
@@ -363,66 +401,159 @@ function generateWarnings(
 }
 
 /**
- * Show recording indicator with timer
+ * Show recording state (timer is handled by floating widget)
  */
 function showRecordingIndicator(): void {
-  if (recordingIndicator) return;
+  if (isRecording) return;
 
   isRecording = true;
   recordingStartTime = Date.now();
 
-  recordingIndicator = document.createElement('div');
-  recordingIndicator.id = 'ai-devtools-recording-indicator';
-  recordingIndicator.innerHTML = `<span class="ai-devtools-timer">0:00</span>`;
-  document.body.appendChild(recordingIndicator);
-
-  // Update timer every second
-  recordingTimerInterval = window.setInterval(() => {
-    if (!recordingIndicator || !recordingStartTime) return;
-    const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = elapsed % 60;
-    const timerEl = recordingIndicator.querySelector('.ai-devtools-timer');
-    if (timerEl) {
-      timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    }
-  }, 1000);
-
-  // Update floating widget if exists
+  // Update floating widget to show recording UI
   updateFloatingWidgetState();
 }
 
 /**
- * Hide recording indicator
+ * Hide recording state
  */
 function hideRecordingIndicator(): void {
   isRecording = false;
   recordingStartTime = null;
 
-  if (recordingTimerInterval) {
-    clearInterval(recordingTimerInterval);
-    recordingTimerInterval = null;
-  }
-
-  if (recordingIndicator) {
-    recordingIndicator.remove();
-    recordingIndicator = null;
-  }
-
-  // Update floating widget if exists
+  // Update floating widget to show normal UI
   updateFloatingWidgetState();
+}
+
+/**
+ * Widget position stored as percentage from edges for responsive positioning
+ */
+interface WidgetPosition {
+  // Position as percentage (0-100) from top-left
+  xPercent: number;
+  yPercent: number;
+  // Collapsed state
+  collapsed: boolean;
+  collapsedEdge: 'left' | 'right' | 'top' | 'bottom' | null;
+}
+
+const EDGE_MARGIN = 24; // px from viewport edge
+const COLLAPSE_THRESHOLD = 40; // px - how close to edge to show collapse preview
+const SNAP_THRESHOLD = -10; // px - how far off-screen to actually collapse
+
+// Widget state
+let widgetCollapsed = false;
+let widgetCollapsedEdge: 'left' | 'right' | 'top' | 'bottom' | null = null;
+
+/**
+ * Apply position from percentage coordinates
+ */
+function applyWidgetPosition(element: HTMLElement, pos: WidgetPosition): void {
+  element.style.top = 'auto';
+  element.style.bottom = 'auto';
+  element.style.left = 'auto';
+  element.style.right = 'auto';
+  element.style.transform = 'none';
+  element.style.width = 'auto';
+  element.style.opacity = '1';
+
+  if (pos.collapsed && pos.collapsedEdge) {
+    // Collapsed to edge
+    if (pos.collapsedEdge === 'left' || pos.collapsedEdge === 'right') {
+      const yPx = (pos.yPercent / 100) * window.innerHeight;
+      element.style.top = `${Math.max(EDGE_MARGIN, Math.min(window.innerHeight - 60, yPx))}px`;
+      if (pos.collapsedEdge === 'left') {
+        element.style.left = '0px';
+      } else {
+        element.style.right = '0px';
+      }
+    } else {
+      // Top or bottom
+      const xPx = (pos.xPercent / 100) * window.innerWidth;
+      element.style.left = `${xPx}px`;
+      element.style.transform = 'translateX(-50%)';
+      if (pos.collapsedEdge === 'top') {
+        element.style.top = '0px';
+      } else {
+        element.style.bottom = '0px';
+      }
+    }
+  } else {
+    // Normal position
+    const xPx = (pos.xPercent / 100) * window.innerWidth;
+    const yPx = (pos.yPercent / 100) * window.innerHeight;
+    element.style.left = `${xPx}px`;
+    element.style.top = `${yPx}px`;
+    element.style.transform = 'translateX(-50%)'; // Center on position
+  }
+}
+
+/**
+ * Get default widget position (bottom center)
+ */
+function getDefaultPosition(): WidgetPosition {
+  return {
+    xPercent: 50,
+    yPercent: 92,
+    collapsed: false,
+    collapsedEdge: null,
+  };
+}
+
+/**
+ * Expand widget from collapsed state
+ */
+function expandWidget(): void {
+  if (!floatingWidget) return;
+
+  const previousEdge = widgetCollapsedEdge;
+  widgetCollapsed = false;
+  widgetCollapsedEdge = null;
+
+  // Get current position and restore appropriately based on which edge it was collapsed to
+  chrome.storage.local.get('widgetPosition').then((stored) => {
+    const pos = (stored.widgetPosition as WidgetPosition) || getDefaultPosition();
+    pos.collapsed = false;
+    pos.collapsedEdge = null;
+
+    // Restore position based on previous edge
+    if (previousEdge === 'left' || previousEdge === 'right') {
+      pos.xPercent = 50; // Restore to center horizontally
+    } else if (previousEdge === 'top' || previousEdge === 'bottom') {
+      pos.yPercent = previousEdge === 'top' ? 15 : 85; // Move away from edge
+    }
+
+    applyWidgetPosition(floatingWidget!, pos);
+    chrome.storage.local.set({ widgetPosition: pos });
+    updateFloatingWidgetState();
+  });
 }
 
 /**
  * Create floating widget toolbar using Shadow DOM for style isolation
  */
-function createFloatingWidget(): void {
+async function createFloatingWidget(): Promise<void> {
   if (floatingWidget) return;
+
+  // Get saved position or default
+  let savedPosition = getDefaultPosition();
+  try {
+    const stored = await chrome.storage.local.get('widgetPosition');
+    if (stored.widgetPosition) {
+      savedPosition = stored.widgetPosition as WidgetPosition;
+    }
+  } catch {
+    // Use default
+  }
+
+  // Apply collapsed state
+  widgetCollapsed = savedPosition.collapsed;
+  widgetCollapsedEdge = savedPosition.collapsedEdge;
 
   // Create host element
   floatingWidget = document.createElement('div');
   floatingWidget.id = 'ai-devtools-widget-host';
-  floatingWidget.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:2147483647;';
+  floatingWidget.style.cssText = 'position:fixed;z-index:2147483647;';
+  applyWidgetPosition(floatingWidget, savedPosition);
 
   const shadow = floatingWidget.attachShadow({ mode: 'closed' });
 
@@ -436,29 +567,56 @@ function createFloatingWidget(): void {
   shadow.appendChild(target);
 
   // Mount Svelte component
+  const currentSelectState = isInspectMode() || isFreeSelectMode();
+  const currentVisualState = getVisualState();
+  // Only skip select animation when staying in select mode (prevents flicker on remount)
+  // Animate for all other transitions including toast → select
+  const skipSelectAnim = lastVisualState === 'select' && currentVisualState === 'select';
+
   const widgetInstance = mount(FloatingWidget, {
     target,
-
     props: {
       isRecording,
       isBuffering,
-      isSelectActive: isInspectMode() || isFreeSelectMode(),
+      isSelectActive: currentSelectState,
+      isCollapsed: widgetCollapsed,
+      collapsedEdge: widgetCollapsedEdge,
+      isDragging: isWidgetDragging,
+      skipAnimation: skipWidgetAnimation,
+      skipSelectAnimation: skipSelectAnim,
+      externalToast: widgetToastMessage,
+      recordingStartTime: recordingStartTime ?? undefined,
       onSelect: () => activateFreeSelectDrag(),
       onStartRecording: () => chrome.runtime.sendMessage({ type: 'START_RECORDING' }),
       onStopRecording: () => chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }),
       onSendBuffer: () => chrome.runtime.sendMessage({ type: 'SEND_BUFFER' }),
+      onExpand: expandWidget,
       onClose: () => { closeWidget(); chrome.storage.local.set({ widgetVisible: false }); },
     },
   });
 
+  // Track visual state for next render
+  lastVisualState = currentVisualState;
+
   document.body.appendChild(floatingWidget);
 
-  // Make it draggable
+  // Make it draggable (only when not collapsed)
   makeDraggable(floatingWidget, target);
 
   // Store instance for updates
   (floatingWidget as any)._instance = widgetInstance;
   (floatingWidget as any)._target = target;
+
+  // Handle viewport resize (e.g., when DevTools opens)
+  const handleResize = () => {
+    if (!floatingWidget) return;
+    chrome.storage.local.get('widgetPosition').then((stored) => {
+      const pos = (stored.widgetPosition as WidgetPosition) || getDefaultPosition();
+      applyWidgetPosition(floatingWidget!, pos);
+    }).catch(() => {});
+  };
+  window.addEventListener('resize', handleResize);
+  (floatingWidget as any)._resizeHandler = handleResize;
 
   // Update state periodically
   updateFloatingWidgetState();
@@ -469,10 +627,24 @@ function createFloatingWidget(): void {
  * Close the floating widget with exit animation
  */
 function closeWidget(): void {
+  widgetCollapsed = false;
+  widgetCollapsedEdge = null;
+  // Reset tracking state so widget mounts properly when recreated
+  lastWidgetRecordingState = false;
+  lastWidgetBufferingState = false;
   lastWidgetSelectState = false;
+  lastWidgetCollapsedState = false;
+  lastWidgetCollapsedEdge = null;
   if (widgetStateInterval) {
     clearInterval(widgetStateInterval);
     widgetStateInterval = null;
+  }
+  // Remove resize listener
+  if (floatingWidget) {
+    const resizeHandler = (floatingWidget as any)._resizeHandler;
+    if (resizeHandler) {
+      window.removeEventListener('resize', resizeHandler);
+    }
   }
   if (floatingWidget) {
     const target = (floatingWidget as any)._target as HTMLElement | undefined;
@@ -501,90 +673,318 @@ function closeWidget(): void {
 function updateFloatingWidgetState(): void {
   if (!floatingWidget) return;
 
-  // Only remount if state actually changed
+  const target = (floatingWidget as any)._target as HTMLElement | undefined;
+  const oldInstance = (floatingWidget as any)._instance;
+  if (!target || !oldInstance) return;
+
+  // Check if state actually changed to avoid unnecessary remounts (which cause animation replay)
   const currentSelectState = isInspectMode() || isFreeSelectMode();
   if (
     isRecording === lastWidgetRecordingState &&
     isBuffering === lastWidgetBufferingState &&
-    currentSelectState === lastWidgetSelectState
-  ) return;
+    currentSelectState === lastWidgetSelectState &&
+    widgetCollapsed === lastWidgetCollapsedState &&
+    widgetCollapsedEdge === lastWidgetCollapsedEdge &&
+    isWidgetDragging === lastWidgetDraggingState &&
+    skipWidgetAnimation === lastWidgetSkipAnimationState &&
+    widgetToastMessage === lastWidgetToastMessage
+  ) {
+    return; // No change, skip remount
+  }
+
+  // Calculate current visual state BEFORE updating tracking variables
+  const currentVisualState = getVisualState();
+  // Only skip select animation when staying in select mode (prevents flicker on remount)
+  // Animate for all other transitions including toast → select
+  const skipSelectAnim = lastVisualState === 'select' && currentVisualState === 'select';
+
+  // Update tracking variables
   lastWidgetRecordingState = isRecording;
   lastWidgetBufferingState = isBuffering;
   lastWidgetSelectState = currentSelectState;
-
-  const target = (floatingWidget as any)._target as HTMLElement | undefined;
-  const oldInstance = (floatingWidget as any)._instance;
-  if (!target || !oldInstance) return;
+  lastWidgetCollapsedState = widgetCollapsed;
+  lastWidgetCollapsedEdge = widgetCollapsedEdge;
+  lastWidgetDraggingState = isWidgetDragging;
+  lastWidgetSkipAnimationState = skipWidgetAnimation;
+  lastWidgetToastMessage = widgetToastMessage;
 
   // Remount with updated props
   unmount(oldInstance);
   const newInstance = mount(FloatingWidget, {
     target,
-
     props: {
       isRecording,
       isBuffering,
-      isSelectActive: isInspectMode() || isFreeSelectMode(),
+      isSelectActive: currentSelectState,
+      isCollapsed: widgetCollapsed,
+      collapsedEdge: widgetCollapsedEdge,
+      isDragging: isWidgetDragging,
+      skipAnimation: skipWidgetAnimation,
+      skipSelectAnimation: skipSelectAnim,
+      externalToast: widgetToastMessage,
+      recordingStartTime: recordingStartTime ?? undefined,
       onSelect: () => activateFreeSelectDrag(),
       onStartRecording: () => chrome.runtime.sendMessage({ type: 'START_RECORDING' }),
       onStopRecording: () => chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }),
       onSendBuffer: () => chrome.runtime.sendMessage({ type: 'SEND_BUFFER' }),
+      onExpand: expandWidget,
       onClose: () => { closeWidget(); chrome.storage.local.set({ widgetVisible: false }); },
     },
   });
   (floatingWidget as any)._instance = newInstance;
+
+  // Track visual state for next render
+  lastVisualState = currentVisualState;
 }
 
 /**
- * Make an element draggable via its drag handle
+ * Make an element draggable via its drag handle with edge collapse
+ * Snaps to collapsed mode when near edge, allows sliding along edge
+ * Also allows dragging collapsed pill to move it or expand
  * @param element - The element to move (host element)
  * @param handleContainer - Optional container to listen for drag handle (for Shadow DOM)
  */
 function makeDraggable(element: HTMLElement, handleContainer?: HTMLElement): void {
   let isDragging = false;
-  let offsetX = 0;
-  let offsetY = 0;
+  let isDraggingCollapsed = false;
+  let initialWidth = 0;
+  let initialHeight = 0;
+  let dragCollapsedEdge: 'left' | 'right' | 'top' | 'bottom' | null = null;
+  let dragStartEdge: 'left' | 'right' | 'top' | 'bottom' | null = null;
+  // Track offset from mouse to element center for smooth dragging
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
 
   const target = handleContainer || element;
+
+  // Handle mousedown on both drag handle (normal) and collapsed pill
   target.addEventListener('mousedown', (e: MouseEvent) => {
-    // Only drag from the drag handle
     const dragHandle = (e.target as HTMLElement).closest('[data-drag-handle]');
-    if (!dragHandle) return;
+    const collapsedPill = (e.target as HTMLElement).closest('[data-widget-pill]');
 
-    isDragging = true;
+    // Drag from drag handle (normal mode)
+    if (dragHandle && !widgetCollapsed) {
+      isDragging = true;
+      isDraggingCollapsed = false;
+      dragCollapsedEdge = null;
+      dragStartEdge = null;
 
-    // Get element's current position
-    const rect = element.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
+      initialWidth = rect.width;
+      initialHeight = rect.height;
 
-    // Calculate offset from mouse to element's top-left corner
-    offsetX = e.clientX - rect.left;
-    offsetY = e.clientY - rect.top;
+      // Calculate offset from mouse to element position
+      // X: offset to center (for translateX(-50%))
+      // Y: offset to top edge (no Y transform)
+      const centerX = rect.left + rect.width / 2;
+      dragOffsetX = centerX - e.clientX;
+      dragOffsetY = rect.top - e.clientY;
 
-    // Lock the width before changing positioning
-    element.style.width = `${rect.width}px`;
+      console.log('[Clueprint Drag] mousedown - rect:', rect.left, rect.top, 'center:', centerX, 'mouse:', e.clientX, e.clientY, 'offset:', dragOffsetX, dragOffsetY);
 
-    // Switch to absolute positioning from top-left
-    element.style.transform = 'none';
-    element.style.left = `${rect.left}px`;
-    element.style.top = `${rect.top}px`;
-    element.style.bottom = 'auto';
+      // Set dragging state to disable hover when collapsing
+      isWidgetDragging = true;
 
-    element.style.cursor = 'grabbing';
-    e.preventDefault();
+      element.style.width = `${rect.width}px`;
+      element.style.transform = 'none';
+      element.style.left = `${rect.left}px`;
+      element.style.top = `${rect.top}px`;
+      element.style.bottom = 'auto';
+      element.style.right = 'auto';
+      element.style.cursor = 'grabbing';
+      e.preventDefault();
+      return;
+    }
+
+    // Drag from collapsed pill (but not from action buttons - let those click through)
+    const isActionButton = (e.target as HTMLElement).closest('[data-action-buttons] button');
+    if (collapsedPill && widgetCollapsed && !isActionButton) {
+      isDragging = true;
+      isDraggingCollapsed = true;
+      dragCollapsedEdge = widgetCollapsedEdge;
+      dragStartEdge = widgetCollapsedEdge;
+
+      // Calculate offset for collapsed pill too
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      dragOffsetX = centerX - e.clientX;
+      dragOffsetY = rect.top - e.clientY;
+      console.log('[Clueprint Drag] mousedown collapsed - rect:', rect.left, rect.top, 'mouse:', e.clientX, e.clientY, 'offset:', dragOffsetX, dragOffsetY);
+
+      // Set dragging state to disable hover
+      isWidgetDragging = true;
+      updateFloatingWidgetState();
+
+      element.style.cursor = 'grabbing';
+      e.preventDefault();
+      e.stopPropagation(); // Prevent expand onClick
+      return;
+    }
   });
 
   document.addEventListener('mousemove', (e: MouseEvent) => {
     if (!isDragging) return;
 
-    // Position element so mouse stays at same relative position
-    element.style.left = `${e.clientX - offsetX}px`;
-    element.style.top = `${e.clientY - offsetY}px`;
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
+
+    // Calculate distances from edges
+    const distFromLeft = mouseX;
+    const distFromRight = window.innerWidth - mouseX;
+    const distFromTop = mouseY;
+    const distFromBottom = window.innerHeight - mouseY;
+
+    const edges = [
+      { edge: 'left' as const, dist: distFromLeft },
+      { edge: 'right' as const, dist: distFromRight },
+      { edge: 'top' as const, dist: distFromTop },
+      { edge: 'bottom' as const, dist: distFromBottom },
+    ];
+    const closest = edges.reduce((min, curr) => curr.dist < min.dist ? curr : min);
+
+    // Snap to collapsed when within threshold
+    if (closest.dist < COLLAPSE_THRESHOLD) {
+      if (dragCollapsedEdge !== closest.edge) {
+        dragCollapsedEdge = closest.edge;
+        widgetCollapsed = true;
+        widgetCollapsedEdge = closest.edge;
+        updateFloatingWidgetState();
+      }
+
+      // Position collapsed pill along the edge using offset for smooth positioning
+      if (closest.edge === 'left' || closest.edge === 'right') {
+        const yPos = Math.max(EDGE_MARGIN, Math.min(window.innerHeight - 50, mouseY + dragOffsetY));
+        console.log('[Clueprint Drag] edge snap', closest.edge, '- yPos:', yPos);
+        element.style.top = `${yPos}px`;
+        element.style.bottom = 'auto';
+        element.style.left = closest.edge === 'left' ? '0px' : 'auto';
+        element.style.right = closest.edge === 'right' ? '0px' : 'auto';
+        element.style.width = 'auto';
+        element.style.transform = 'none';
+      } else {
+        const xPos = Math.max(EDGE_MARGIN, Math.min(window.innerWidth - 50, mouseX + dragOffsetX));
+        console.log('[Clueprint Drag] edge snap', closest.edge, '- xPos:', xPos);
+        element.style.left = `${xPos}px`;
+        element.style.right = 'auto';
+        element.style.transform = 'none';
+        element.style.top = closest.edge === 'top' ? '0px' : 'auto';
+        element.style.bottom = closest.edge === 'bottom' ? '0px' : 'auto';
+        element.style.width = 'auto';
+      }
+    } else if (!isDraggingCollapsed) {
+      // Not near edge and started from normal mode - show normal widget
+      if (dragCollapsedEdge !== null) {
+        dragCollapsedEdge = null;
+        widgetCollapsed = false;
+        widgetCollapsedEdge = null;
+        element.style.width = `${initialWidth}px`;
+        updateFloatingWidgetState();
+      }
+
+      // Normal drag - position using offset to keep widget in same relative position to mouse
+      // X is center position (with translateX(-50%)), Y is top edge position
+      const newCenterX = mouseX + dragOffsetX;
+      const newTopY = mouseY + dragOffsetY;
+      console.log('[Clueprint Drag] mousemove - mouse:', mouseX, mouseY, 'newPos:', newCenterX, newTopY);
+      element.style.left = `${newCenterX}px`;
+      element.style.top = `${newTopY}px`;
+      element.style.right = 'auto';
+      element.style.bottom = 'auto';
+      element.style.transform = 'translateX(-50%)';
+    } else {
+      // Started from collapsed but dragged away from edge - expand
+      dragCollapsedEdge = null;
+      isDraggingCollapsed = false;
+      widgetCollapsed = false;
+      widgetCollapsedEdge = null;
+      initialWidth = 200; // Approximate width for expanded widget
+      element.style.width = 'auto';
+      updateFloatingWidgetState();
+
+      // When expanding from collapsed, center X on mouse, Y at mouse minus some offset
+      element.style.left = `${mouseX}px`;
+      element.style.top = `${mouseY - 22}px`; // Offset by ~half widget height
+      element.style.right = 'auto';
+      element.style.bottom = 'auto';
+      element.style.transform = 'translateX(-50%)';
+    }
   });
 
-  document.addEventListener('mouseup', () => {
+  document.addEventListener('mouseup', (e: MouseEvent) => {
     if (isDragging) {
-      element.style.cursor = '';
+      const wasCollapsedDrag = isDraggingCollapsed && dragStartEdge === dragCollapsedEdge;
+
       isDragging = false;
+      isDraggingCollapsed = false;
+
+      // Set skipAnimation before clearing dragging state to prevent entrance animation on remount
+      skipWidgetAnimation = true;
+      isWidgetDragging = false;
+      element.style.cursor = '';
+
+      // Reset skipAnimation after animation would have completed
+      setTimeout(() => {
+        skipWidgetAnimation = false;
+        // Force state update to clear the flag (won't remount if nothing else changed)
+        lastWidgetSkipAnimationState = false;
+      }, 600);
+
+      // If it was just a click on collapsed pill (no movement to different edge), expand
+      if (wasCollapsedDrag && dragCollapsedEdge !== null) {
+        // Check if mouse is still near the same edge - if so, it was a position adjustment, not expand
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+        const distFromEdge = dragCollapsedEdge === 'left' ? mouseX :
+                            dragCollapsedEdge === 'right' ? window.innerWidth - mouseX :
+                            dragCollapsedEdge === 'top' ? mouseY :
+                            window.innerHeight - mouseY;
+
+        // Only consider it a "click to expand" if very minimal movement (handled by onClick)
+        // Otherwise save the new position along the edge
+      }
+
+      const rect = element.getBoundingClientRect();
+      console.log('[Clueprint Drag] mouseup - rect:', rect.left, rect.top, rect.width, rect.height, 'dragCollapsedEdge:', dragCollapsedEdge);
+
+      // Calculate position - use current rect position directly
+      let xPercent: number;
+      let yPercent: number;
+
+      // X percent is center position (applyWidgetPosition uses translateX(-50%))
+      // Y percent is top edge position (no Y transform)
+      if (dragCollapsedEdge === 'left' || dragCollapsedEdge === 'right') {
+        xPercent = dragCollapsedEdge === 'left' ? 0 : 100;
+        yPercent = (rect.top / window.innerHeight) * 100;
+      } else if (dragCollapsedEdge === 'top' || dragCollapsedEdge === 'bottom') {
+        xPercent = ((rect.left + rect.width / 2) / window.innerWidth) * 100;
+        yPercent = dragCollapsedEdge === 'top' ? 0 : 100;
+      } else {
+        xPercent = ((rect.left + rect.width / 2) / window.innerWidth) * 100;
+        yPercent = (rect.top / window.innerHeight) * 100;
+      }
+
+      xPercent = Math.max(5, Math.min(95, xPercent));
+      yPercent = Math.max(5, Math.min(95, yPercent));
+
+      const pos: WidgetPosition = {
+        xPercent,
+        yPercent,
+        collapsed: dragCollapsedEdge !== null,
+        collapsedEdge: dragCollapsedEdge,
+      };
+
+      widgetCollapsed = pos.collapsed;
+      widgetCollapsedEdge = pos.collapsedEdge;
+
+      console.log('[Clueprint Drag] applying final position:', JSON.stringify(pos));
+      applyWidgetPosition(element, pos);
+      const finalRect = element.getBoundingClientRect();
+      console.log('[Clueprint Drag] after applyWidgetPosition - rect:', finalRect.left, finalRect.top);
+      chrome.storage.local.set({ widgetPosition: pos }).catch(() => {});
+      updateFloatingWidgetState();
+
+      dragCollapsedEdge = null;
+      dragStartEdge = null;
     }
   });
 }
@@ -621,6 +1021,20 @@ function isDomainAllowed(hostname: string, allowedDomains: string[]): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Show a toast message in the floating widget
+ */
+function showWidgetToast(message: string): void {
+  widgetToastMessage = message;
+  updateFloatingWidgetState();
+
+  // Clear toast after display and trigger state update
+  setTimeout(() => {
+    widgetToastMessage = '';
+    updateFloatingWidgetState();
+  }, 2500);
 }
 
 // Initialize on load

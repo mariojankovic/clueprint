@@ -2,8 +2,51 @@
 // Core Types for AI Browser DevTools
 // =============================================================================
 
-// Intent types for element/region selection
+// Intent types for element/region selection (deprecated, kept for backward compat)
 export type Intent = 'tag' | 'fix' | 'beautify' | 'other';
+
+// =============================================================================
+// Capture Options (New unified capture interface)
+// =============================================================================
+
+export interface CaptureOptions {
+  includeScreenshot: boolean;
+  includeConsoleLogs: boolean;
+  suggestImprovements: boolean;
+}
+
+export const DEFAULT_CAPTURE_OPTIONS: CaptureOptions = {
+  includeScreenshot: true,
+  includeConsoleLogs: true,
+  suggestImprovements: false,
+};
+
+// =============================================================================
+// Improvement Detection Types
+// =============================================================================
+
+export interface ResponsiveIssue {
+  type: 'fixed-width' | 'small-touch-target' | 'off-screen' | 'non-responsive-unit';
+  severity: 'warning' | 'error';
+  element: string;
+  message: string;
+  suggestion: string;
+  fileLine?: string;
+}
+
+export interface AccessibilityIssue {
+  type: string; // axe-core rule id (e.g., 'color-contrast', 'image-alt')
+  severity: 'critical' | 'serious' | 'moderate' | 'minor';
+  element: string;
+  message: string;
+  suggestion: string;
+  fileLine?: string;
+}
+
+export interface Improvements {
+  responsive: ResponsiveIssue[];
+  accessibility: AccessibilityIssue[];
+}
 
 // Event types for flow recording
 export type EventType =
@@ -189,9 +232,15 @@ export interface SourceInfo {
   line?: number;
 }
 
+export interface QueuedElement {
+  element: Element;
+  label: string; // e.g., "button.primary#submit"
+  sourceInfo?: SourceInfo;
+}
+
 export interface InspectCapture {
   mode: 'inspect';
-  intent: Intent;
+  options: CaptureOptions;
   timestamp: number;
   element: {
     selector: string;
@@ -211,6 +260,7 @@ export interface InspectCapture {
   browserContext: BrowserContext;
   diagnosis: Diagnosis;
   screenshot?: string;
+  improvements?: Improvements;
 }
 
 export interface AestheticStyles {
@@ -238,7 +288,7 @@ export interface AestheticAnalysis {
 
 export interface FreeSelectCapture {
   mode: 'free-select';
-  intent: Intent;
+  options: CaptureOptions;
   timestamp: number;
 
   region: ElementRect;
@@ -247,6 +297,7 @@ export interface FreeSelectCapture {
   structure: string;
   aestheticAnalysis?: AestheticAnalysis;
   browserContext: BrowserContext;
+  improvements?: Improvements;
 }
 
 // =============================================================================

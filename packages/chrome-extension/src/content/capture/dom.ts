@@ -3,17 +3,47 @@
  */
 
 import { getSelector, getShortSelector, getAllClasses } from '../utils/selector';
+
+/**
+ * Check if an element is part of our UI (picker, widget, highlights, etc.)
+ * Walks up the DOM tree and through Shadow DOM boundaries
+ */
+function isOurUIElement(element: Element | null): boolean {
+  let el: Element | null = element;
+  while (el) {
+    if (el instanceof HTMLElement) {
+      // Check for our element IDs
+      if (el.id?.startsWith('ai-devtools-') || el.id?.startsWith('clueprint-')) {
+        return true;
+      }
+      // Check for data attributes we use
+      if (el.hasAttribute('data-widget-pill') || el.hasAttribute('data-picker')) {
+        return true;
+      }
+      // Check for our class names
+      if (el.classList?.contains('ai-devtools-queue-highlight') || el.classList?.contains('ai-devtools-region-highlight')) {
+        return true;
+      }
+    }
+    // Walk up to parent or shadow host
+    el = el.parentElement || (el.getRootNode() as ShadowRoot)?.host || null;
+  }
+  return false;
+}
 import { getElementStyles, getAppliedCSSRules, detectStyleAnomalies } from '../utils/styles';
 import { detectSourceInfo } from './source-detect';
+import { checkResponsive } from '../analysis/responsive-check';
+import { checkAccessibility } from '../analysis/accessibility-check';
 import type {
   ElementRect,
   ParentInfo,
   SiblingInfo,
   CSSRule,
   InspectCapture,
-  Intent,
+  CaptureOptions,
   BrowserContext,
   Diagnosis,
+  Improvements,
 } from '../../types';
 
 /**
@@ -137,24 +167,34 @@ export function getSiblingInfo(element: Element, siblings: Element[]): SiblingIn
 /**
  * Capture complete element information
  */
-export function captureElement(
+export async function captureElement(
   element: Element,
-  intent: Intent,
+  options: CaptureOptions,
   browserContext: BrowserContext,
   cssDetailLevel: 0 | 1 | 2 | 3 = 1
-): Omit<InspectCapture, 'screenshot'> {
+): Promise<Omit<InspectCapture, 'screenshot'>> {
   const siblings = getSiblings(element);
   const cssRules = getAppliedCSSRules(element);
 
   // Generate pre-diagnosis
   const diagnosis = generateDiagnosis(element, siblings, cssRules, browserContext);
 
-  // Detect framework source file
-  const sourceInfo = detectSourceInfo(element) || undefined;
+  // Detect framework source file (async - needs page context injection)
+  const sourceInfo = await detectSourceInfo(element) || undefined;
+
+  // Run improvement checks if requested
+  let improvements: Improvements | undefined;
+  if (options.suggestImprovements) {
+    const responsive = checkResponsive(element, sourceInfo);
+    const accessibility = checkAccessibility(element, sourceInfo);
+    if (responsive.length > 0 || accessibility.length > 0) {
+      improvements = { responsive, accessibility };
+    }
+  }
 
   return {
     mode: 'inspect',
-    intent,
+    options,
     timestamp: Date.now(),
 
     element: {
@@ -174,6 +214,7 @@ export function captureElement(
     cssRules: formatCSSRules(cssRules),
     browserContext,
     diagnosis,
+    improvements,
   };
 }
 
@@ -334,6 +375,9 @@ export function getElementsInRegion(rect: DOMRect): Element[] {
 
   // Traverse each root subtree. Returns count of elements selected within.
   function traverse(el: Element): number {
+    // Skip our own UI elements (picker, widget, highlights, etc.)
+    if (isOurUIElement(el)) return 0;
+
     const elRect = el.getBoundingClientRect();
 
     // Skip elements with no dimensions
