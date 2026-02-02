@@ -42,46 +42,6 @@
   box-sizing: border-box !important;
 }
 
-/* Recording indicator */
-#ai-devtools-recording-indicator {
-  position: fixed !important;
-  top: 10px !important;
-  right: 10px !important;
-  background: #f44336 !important;
-  color: white !important;
-  padding: 8px 16px !important;
-  border-radius: 20px !important;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-  z-index: 2147483647 !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4) !important;
-  animation: ai-devtools-pulse 2s infinite !important;
-  box-sizing: border-box !important;
-}
-
-#ai-devtools-recording-indicator::before {
-  content: '' !important;
-  width: 8px !important;
-  height: 8px !important;
-  background: white !important;
-  border-radius: 50% !important;
-  animation: ai-devtools-blink 1s infinite !important;
-}
-
-@keyframes ai-devtools-pulse {
-  0%, 100% { box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4); }
-  50% { box-shadow: 0 2px 16px rgba(244, 67, 54, 0.6); }
-}
-
-@keyframes ai-devtools-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
 /* High-contrast mode support */
 @media (prefers-contrast: high) {
   #ai-devtools-highlight {
@@ -97,15 +57,8 @@
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
   #ai-devtools-highlight,
-  #ai-devtools-selection,
-  #ai-devtools-recording-indicator {
+  #ai-devtools-selection {
     transition: none !important;
     animation: none !important;
   }
-}
-
-/* Timer in recording indicator */
-.ai-devtools-timer {
-  font-variant-numeric: tabular-nums !important;
-  font-weight: 500 !important;
 }

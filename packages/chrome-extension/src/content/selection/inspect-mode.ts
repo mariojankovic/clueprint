@@ -5,8 +5,10 @@
 import { getSelector } from '../utils/selector';
 import { captureElement } from '../capture/dom';
 import { captureElementScreenshot } from '../capture/screenshot';
-import { mountInspectPicker, showConfirmation } from '../ui/mount';
-import type { InspectCapture, Intent, BrowserContext } from '../../types';
+import { detectSourceInfo } from '../capture/source-detect';
+import { mountInspectPicker, showToast } from '../ui/mount';
+import { activateFreeSelectDrag, deactivateFreeSelectDrag, isFreeSelectMode } from './free-select';
+import type { InspectCapture, CaptureOptions, BrowserContext, SourceInfo } from '../../types';
 
 let isInspectModeActive = false;
 let isOptionKeyHeld = false;
@@ -17,6 +19,38 @@ let hoveredElement: Element | null = null;
 let lockedElement: Element | null = null; // Element locked for selection (when picker shown)
 let savedOverflow: string | null = null; // Saved body overflow for scroll lock
 let pickerCleanup: (() => void) | null = null; // Cleanup function for the current picker
+
+// Multi-select queue
+let elementQueue: Element[] = [];
+let queueHighlights: HTMLElement[] = [];
+
+// Optional region rect for screenshot (set by drag selection)
+let regionRect: { x: number; y: number; width: number; height: number } | null = null;
+
+/**
+ * Check if an event originated from our UI elements (picker, widget, highlights, etc.)
+ * Uses composedPath to check through Shadow DOM boundaries
+ */
+function isOurUIElement(event: Event): boolean {
+  const path = event.composedPath();
+  for (const el of path) {
+    if (el instanceof HTMLElement) {
+      // Check for our element IDs
+      if (el.id?.startsWith('ai-devtools-') || el.id?.startsWith('clueprint-')) {
+        return true;
+      }
+      // Check for data attributes we use
+      if (el.hasAttribute('data-widget-pill') || el.hasAttribute('data-picker')) {
+        return true;
+      }
+      // Check for our class names
+      if (el.classList?.contains('ai-devtools-queue-highlight') || el.classList?.contains('ai-devtools-region-highlight')) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 /**
  * Handle Option/Alt key press to activate inspect mode
@@ -61,6 +95,43 @@ function handleWindowBlur(): void {
     isOptionKeyHeld = false;
     if (!document.getElementById('ai-devtools-intent-picker')) {
       deactivateInspectMode();
+    }
+  }
+}
+
+/**
+ * Handle global Shift+Click for Figma-style selection (works anytime)
+ */
+function handleGlobalShiftClick(event: MouseEvent): void {
+  // Only handle Shift+Click
+  if (!event.shiftKey) return;
+
+  // Skip if inspect mode or free-select mode is already handling this
+  // (they have their own Shift+Click handlers)
+  if (isInspectModeActive) return;
+  if (isFreeSelectMode()) return;
+
+  // Ignore our own UI elements (picker, widget, highlights, etc.)
+  if (isOurUIElement(event)) return;
+
+  const element = event.target as Element;
+  if (!element) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  // Toggle element in selection (Figma-style)
+  if (elementQueue.includes(element)) {
+    removeFromQueue(element);
+    const count = elementQueue.length;
+    if (count > 0) {
+      showToast(`${count} selected`, 'info', 1500);
+    }
+  } else {
+    addToQueue(element);
+    const count = elementQueue.length;
+    if (count > 1) {
+      showToast(`${count} selected`, 'success', 1500);
     }
   }
 }
@@ -132,12 +203,13 @@ export interface ElementContext {
   pageUrl: string;
   childCount: number;
   styles: Array<{ prop: string; value: string }>;
+  sourceInfo?: SourceInfo;
 }
 
 /**
- * Extract element context for the picker UI
+ * Extract element context for the picker UI (sync version without source info)
  */
-function getElementContext(element: Element): ElementContext {
+function getElementContext(element: Element, sourceInfo?: SourceInfo): ElementContext {
   const { parents, elements } = getParentChain(element);
   return {
     tag: element.tagName.toLowerCase(),
@@ -148,6 +220,7 @@ function getElementContext(element: Element): ElementContext {
     pageUrl: window.location.hostname + window.location.pathname,
     childCount: element.children.length,
     styles: getSmartStyles(element),
+    sourceInfo,
   };
 }
 
@@ -400,9 +473,137 @@ function removeHighlight(): void {
 }
 
 /**
+ * Create a persistent highlight for selected elements (Figma-style clean outline)
+ */
+function createQueueHighlight(element: Element): HTMLElement {
+  const rect = element.getBoundingClientRect();
+  const highlight = document.createElement('div');
+  highlight.className = 'ai-devtools-queue-highlight';
+  highlight.style.cssText = `
+    position: fixed;
+    pointer-events: none;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.05);
+    z-index: 2147483646;
+    border-radius: 4px;
+    top: ${rect.top}px;
+    left: ${rect.left}px;
+    width: ${rect.width}px;
+    height: ${rect.height}px;
+  `;
+
+  document.body.appendChild(highlight);
+  return highlight;
+}
+
+/**
+ * Add element to multi-select queue
+ */
+export function addToQueue(element: Element): boolean {
+  // Don't add duplicates
+  if (elementQueue.includes(element)) return false;
+
+  elementQueue.push(element);
+  const highlight = createQueueHighlight(element);
+  queueHighlights.push(highlight);
+  return true;
+}
+
+/**
+ * Check if element is already in queue
+ */
+export function isInQueue(element: Element): boolean {
+  return elementQueue.includes(element);
+}
+
+/**
+ * Remove element from queue
+ */
+export function removeFromQueue(element: Element): boolean {
+  const index = elementQueue.indexOf(element);
+  if (index === -1) return false;
+
+  elementQueue.splice(index, 1);
+  const highlight = queueHighlights[index];
+  if (highlight) {
+    highlight.remove();
+    queueHighlights.splice(index, 1);
+  }
+
+  return true;
+}
+
+/**
+ * Remove element from queue by index
+ */
+export function removeFromQueueByIndex(index: number): boolean {
+  if (index < 0 || index >= elementQueue.length) return false;
+
+  elementQueue.splice(index, 1);
+  const highlight = queueHighlights[index];
+  if (highlight) {
+    highlight.remove();
+    queueHighlights.splice(index, 1);
+  }
+
+  return true;
+}
+
+/**
+ * Clear the element queue and remove highlights
+ */
+export function clearQueue(): void {
+  for (const highlight of queueHighlights) {
+    highlight.remove();
+  }
+  queueHighlights = [];
+  elementQueue = [];
+  regionRect = null;
+}
+
+/**
+ * Get current queue count
+ */
+export function getQueueCount(): number {
+  return elementQueue.length;
+}
+
+/**
+ * Bulk add multiple elements to queue (used by drag selection)
+ * Clears existing queue first, then adds all elements
+ */
+export function bulkAddToQueue(elements: Element[], rect?: { x: number; y: number; width: number; height: number }): void {
+  // Clear existing queue
+  clearQueue();
+
+  // Store region rect for screenshot if provided
+  if (rect) {
+    regionRect = rect;
+  }
+
+  // Add all elements
+  for (const element of elements) {
+    if (!elementQueue.includes(element)) {
+      elementQueue.push(element);
+      const highlight = createQueueHighlight(element);
+      queueHighlights.push(highlight);
+    }
+  }
+}
+
+/**
+ * Get the stored region rect (for screenshot capture)
+ */
+export function getRegionRect(): { x: number; y: number; width: number; height: number } | null {
+  return regionRect;
+}
+
+/**
  * Lock page scrolling (prevent highlight from drifting away from element)
  */
 function lockScroll(): void {
+  // Don't overwrite savedOverflow if already locked
+  if (savedOverflow !== null) return;
   savedOverflow = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
 }
@@ -424,9 +625,8 @@ function handleMouseMove(event: MouseEvent): void {
   // Don't update highlight when element is locked (picker is shown)
   if (lockedElement) return;
 
-  // Ignore our own overlay
-  if ((event.target as HTMLElement)?.id === 'ai-devtools-highlight') return;
-  if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
+  // Ignore our own UI elements (picker, widget, highlights, etc.)
+  if (isOurUIElement(event)) return;
 
   const element = event.target as Element;
   if (element && element !== hoveredElement) {
@@ -436,34 +636,41 @@ function handleMouseMove(event: MouseEvent): void {
 }
 
 /**
- * Handle click to select element (Option+Click or manual mode)
+ * Handle click to select element (Option+Click only)
+ * Note: Free-select mode handles clicks when picker is shown
  */
 function handleClick(event: MouseEvent): void {
-  // Allow click if Option/Alt key held OR if manually activated via toolbar
+  // Ignore our own UI elements (picker, widget, highlights, etc.)
+  if (isOurUIElement(event)) return;
+
+  const element = event.target as Element;
+  if (!element) return;
+
+  // If free-select mode is active, let it handle the click
+  // (prevents double-handling of the same click event)
+  if (isFreeSelectMode()) return;
+
+  // For non-picker clicks, require Option/Alt key OR manually activated mode
   if (!event.altKey && !isManuallyActivated) return;
-
-  // Ignore our own UI elements
-  if ((event.target as HTMLElement)?.id?.startsWith('ai-devtools-')) return;
-
-  // If picker is already shown, don't select a new element
-  // Let the click propagate to the picker's click-outside handler
-  // Check both lockedElement and the DOM element for reliability
-  if (lockedElement || document.getElementById('ai-devtools-intent-picker')) return;
 
   event.preventDefault();
   event.stopPropagation();
 
-  const element = event.target as Element;
-  if (element) {
-    // Show intent picker
-    showIntentPicker(element, event.clientX, event.clientY);
+  // Add to queue and show picker
+  if (!elementQueue.includes(element)) {
+    addToQueue(element);
   }
+  showIntentPicker(element, event.clientX, event.clientY);
 }
 
 /**
  * Show intent picker (fix/beautify) at position using Shadow DOM
  */
-function showIntentPicker(element: Element, x: number, y: number): void {
+async function showIntentPicker(element: Element, x: number, y: number): Promise<void> {
+  // Store position for potential refresh
+  lastPickerX = x;
+  lastPickerY = y;
+
   // Lock the element - this prevents hover updates and stores the element for selection
   lockedElement = element;
 
@@ -478,7 +685,28 @@ function showIntentPicker(element: Element, x: number, y: number): void {
     currentLabel.style.display = 'none';
   }
 
-  const context = getElementContext(element);
+  // Detect source info for ALL queued elements (parallel for speed)
+  const queuedElements = await Promise.all(
+    elementQueue.map(async (el) => {
+      const sourceInfo = await detectSourceInfo(el) || undefined;
+      const tag = el.tagName.toLowerCase();
+      const id = el.id ? `#${el.id}` : '';
+      const cls = el.classList.length > 0 ? `.${el.classList[0]}` : '';
+      return {
+        element: el,
+        label: tag + id + cls,
+        sourceInfo,
+      };
+    })
+  );
+
+  // Use first element's source info for backwards compat
+  const sourceInfo = queuedElements[0]?.sourceInfo;
+  const context = {
+    ...getElementContext(element, sourceInfo),
+    queueCount: elementQueue.length,
+    queuedElements,
+  };
 
   const handleChangeElement = (newElement: Element): ElementContext => {
     lockedElement = newElement;
@@ -486,25 +714,61 @@ function showIntentPicker(element: Element, x: number, y: number): void {
     if (currentLabel) {
       currentLabel.style.display = 'none';
     }
+    // Note: Source info not available for breadcrumb navigation (would require async callback)
     return getElementContext(newElement);
+  };
+
+  const handleRemoveQueuedElement = async (index: number) => {
+    // Check if we're removing the locked element
+    const removedElement = elementQueue[index];
+    const wasLockedElement = removedElement === lockedElement;
+
+    removeFromQueueByIndex(index);
+    const count = elementQueue.length;
+
+    if (count === 0) {
+      // If all elements removed, close picker
+      if (pickerCleanup) {
+        pickerCleanup();
+        pickerCleanup = null;
+      }
+      unlockScroll();
+      lockedElement = null;
+      deactivateInspectMode();
+      deactivateFreeSelectDrag();
+      showToast('Selection cleared', 'info', 1500);
+    } else {
+      // If we removed the locked element, switch to first remaining element
+      if (wasLockedElement) {
+        lockedElement = elementQueue[0];
+        updateHighlight(lockedElement);
+      }
+      // Refresh picker with updated queue
+      await refreshPicker();
+      showToast(`${count} selected`, 'info', 1500);
+    }
   };
 
   const { cleanup } = mountInspectPicker(
     x,
     y,
     context,
-    async (intent) => {
+    async (options: CaptureOptions) => {
       pickerCleanup = null;
       unlockScroll();
-      await selectElement(lockedElement!, intent);
+      await selectElement(lockedElement!, options);
+      clearQueue(); // Clear multi-select queue after capture
     },
     () => {
       pickerCleanup = null;
       unlockScroll();
       lockedElement = null;
+      clearQueue(); // Clear queue on close too
       deactivateInspectMode();
+      deactivateFreeSelectDrag(); // Also deactivate free-select mode
     },
-    handleChangeElement
+    handleChangeElement,
+    handleRemoveQueuedElement
   );
   pickerCleanup = cleanup;
 }
@@ -512,23 +776,23 @@ function showIntentPicker(element: Element, x: number, y: number): void {
 /**
  * Select element and send to background
  *
- * Intent-specific data:
- * - tag: Just element identification (minimal context for AI awareness)
- * - fix: Include console errors, network failures (debugging context)
- * - beautify: Include screenshot (visual context for styling)
+ * Data included based on CaptureOptions:
+ * - includeScreenshot: Capture and include element screenshot
+ * - includeConsoleLogs: Include console errors, network failures
+ * - suggestImprovements: Run responsive/accessibility checks (future)
  */
-async function selectElement(element: Element, intent: Intent): Promise<void> {
-  // Get browser context only for fix intent (console logs, network failures)
-  const browserContext = intent === 'fix'
+async function selectElement(element: Element, options: CaptureOptions): Promise<void> {
+  // Get browser context if console logs are requested
+  const browserContext = options.includeConsoleLogs
     ? await getBrowserContext()
     : { errors: [], networkFailures: [] };
 
-  // Capture element data
-  const capture = captureElement(element, intent, browserContext);
+  // Capture element data (async for source detection)
+  const capture = await captureElement(element, options, browserContext);
 
-  // Capture screenshot only for beautify intent
+  // Capture screenshot if requested
   let screenshot: string | undefined;
-  if (intent === 'beautify') {
+  if (options.includeScreenshot) {
     screenshot = await captureElementScreenshot(element) || undefined;
   }
 
@@ -537,14 +801,11 @@ async function selectElement(element: Element, intent: Intent): Promise<void> {
     screenshot,
   };
 
-  // Send to background script
+  // Send to background script (will trigger toast via SHOW_CAPTURE_TOAST)
   await chrome.runtime.sendMessage({
     type: 'ELEMENT_SELECTED',
     payload: fullCapture,
   });
-
-  // Show confirmation
-  showSelectionConfirmation(element);
 
   // Deactivate inspect mode
   deactivateInspectMode();
@@ -562,14 +823,6 @@ async function getBrowserContext(): Promise<BrowserContext> {
   } catch {
     return { errors: [], networkFailures: [] };
   }
-}
-
-/**
- * Show confirmation that element was selected
- */
-function showSelectionConfirmation(element: Element): void {
-  const rect = element.getBoundingClientRect();
-  showConfirmation(rect.left, rect.top - 30, '✓ Element captured');
 }
 
 /**
@@ -612,6 +865,9 @@ export function deactivateInspectMode(): void {
     pickerCleanup = null;
   }
 
+  // Clear the element queue and highlights
+  clearQueue();
+
   document.removeEventListener('mousemove', handleMouseMove, true);
   document.removeEventListener('click', handleClick, true);
 
@@ -647,6 +903,32 @@ export function inspectElementAtPoint(element: Element, x: number, y: number): v
   showIntentPicker(element, x, y);
 }
 
+// Track last picker position for refresh
+let lastPickerX = 0;
+let lastPickerY = 0;
+
+/**
+ * Refresh the picker with current queue data (call after adding/removing elements)
+ */
+export async function refreshPicker(): Promise<void> {
+  const picker = document.getElementById('ai-devtools-intent-picker');
+  if (!picker || !lockedElement) return;
+
+  // Get picker position before closing
+  const rect = picker.getBoundingClientRect();
+  const x = lastPickerX || rect.left;
+  const y = lastPickerY || rect.top;
+
+  // Close current picker
+  if (pickerCleanup) {
+    pickerCleanup();
+    pickerCleanup = null;
+  }
+
+  // Reopen with fresh data (showIntentPicker will detect source info for all queued elements)
+  await showIntentPicker(lockedElement, x, y);
+}
+
 /**
  * Check if inspect mode is active
  */
@@ -660,8 +942,9 @@ export function isInspectMode(): boolean {
 export function initInspectMode(): void {
   document.addEventListener('keydown', handleKeyDown, true);
   document.addEventListener('keyup', handleKeyUp, true);
+  document.addEventListener('click', handleGlobalShiftClick, true);
   window.addEventListener('blur', handleWindowBlur);
-  console.log('[AI DevTools] Inspect mode initialized. Hold Option to highlight elements.');
+  console.log('[Clueprint] Inspect mode initialized. Hold Option to highlight elements, Shift+Click to multi-select.');
 }
 
 /**
@@ -670,8 +953,10 @@ export function initInspectMode(): void {
 export function cleanupInspectMode(): void {
   document.removeEventListener('keydown', handleKeyDown, true);
   document.removeEventListener('keyup', handleKeyUp, true);
+  document.removeEventListener('click', handleGlobalShiftClick, true);
   window.removeEventListener('blur', handleWindowBlur);
   deactivateInspectMode();
+  clearQueue(); // Clear any remaining selection
   isOptionKeyHeld = false;
   lockedElement = null;
   pickerCleanup = null;

@@ -1,6 +1,7 @@
 ---
 description: Get page diagnostics including console errors, network failures, and performance metrics
 allowed-tools: mcp__clueprint__audit
+argument-hint: [task]
 ---
 
 Call `mcp__clueprint__audit` to get diagnostics for the current page in the browser.

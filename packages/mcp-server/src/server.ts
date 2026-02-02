@@ -53,6 +53,11 @@ const TOOLS = [
           default: 1,
           description: 'CSS detail level for element selections: 0=none, 1=layout+visual, 2=+typography, 3=full computed',
         },
+        suggestImprovements: {
+          type: 'boolean',
+          default: false,
+          description: 'Run responsive and accessibility checks. Returns structured warnings (fixed widths, small touch targets, missing alt text, etc.) with source file locations when available.',
+        },
       },
     },
   },

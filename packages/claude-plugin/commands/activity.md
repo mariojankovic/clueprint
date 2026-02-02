@@ -1,6 +1,7 @@
 ---
 description: Get the last 30 seconds of browser activity
 allowed-tools: mcp__clueprint__activity
+argument-hint: [task]
 ---
 
 Call `mcp__clueprint__activity` to get recent browser activity from the background capture buffer.

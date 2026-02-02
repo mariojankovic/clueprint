@@ -1,6 +1,7 @@
 ---
 description: Get the most recent flow recording from the browser
 allowed-tools: mcp__clueprint__recording
+argument-hint: [task]
 ---
 
 Call `mcp__clueprint__recording` to get the most recent flow recording.

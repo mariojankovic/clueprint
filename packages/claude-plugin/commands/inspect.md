@@ -1,6 +1,7 @@
 ---
 description: Get the inspected element or region from the browser
 allowed-tools: mcp__clueprint__inspect
+argument-hint: [task]
 ---
 
 Call `mcp__clueprint__inspect` to get the element or region the user selected in the browser.

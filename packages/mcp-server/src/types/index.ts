@@ -3,8 +3,39 @@
  * Mirrors extension types for communication
  */
 
-// Intent types
+// Intent types (deprecated, kept for backward compat)
 export type Intent = 'fix' | 'beautify' | 'other';
+
+// Capture Options (New unified capture interface)
+export interface CaptureOptions {
+  includeScreenshot: boolean;
+  includeConsoleLogs: boolean;
+  suggestImprovements: boolean;
+}
+
+// Improvement Detection Types
+export interface ResponsiveIssue {
+  type: 'fixed-width' | 'small-touch-target' | 'off-screen' | 'non-responsive-unit';
+  severity: 'warning' | 'error';
+  element: string;
+  message: string;
+  suggestion: string;
+  fileLine?: string;
+}
+
+export interface AccessibilityIssue {
+  type: string;
+  severity: 'critical' | 'serious' | 'moderate' | 'minor';
+  element: string;
+  message: string;
+  suggestion: string;
+  fileLine?: string;
+}
+
+export interface Improvements {
+  responsive: ResponsiveIssue[];
+  accessibility: AccessibilityIssue[];
+}
 
 // Event types for flow recording
 export type EventType =
@@ -113,7 +144,7 @@ export interface SourceInfo {
 
 export interface InspectCapture {
   mode: 'inspect';
-  intent: Intent;
+  options: CaptureOptions;
   timestamp: number;
   element: {
     selector: string;
@@ -132,11 +163,12 @@ export interface InspectCapture {
   browserContext: BrowserContext;
   diagnosis: Diagnosis;
   screenshot?: string;
+  improvements?: Improvements;
 }
 
 export interface FreeSelectCapture {
   mode: 'free-select';
-  intent: Intent;
+  options: CaptureOptions;
   timestamp: number;
   region: ElementRect;
   screenshot: string;
@@ -156,6 +188,7 @@ export interface FreeSelectCapture {
     colorPalette: string[];
   };
   browserContext: BrowserContext;
+  improvements?: Improvements;
 }
 
 export interface FlowEvent {

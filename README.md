@@ -31,10 +31,10 @@ The setup wizard installs the Chrome extension, configures the MCP server, and c
 
 Instead of describing what you see or copy-pasting HTML, clueprint lets your AI assistant observe the browser directly:
 
-| Action                                | What gets captured                                                                 |
-| ------------------------------------- | ---------------------------------------------------------------------------------- |
-| **Cmd+Shift+X** then click an element | Tag, classes, attributes, computed styles, parent context, related console errors  |
-| **Cmd+Shift+X** then drag a region    | Screenshot, all elements within bounds, DOM structure, visual analysis             |
+| Action                                | What gets captured                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| **Cmd+Shift+X** then click an element | Tag, classes, styles, source file + line (React/Vue/Svelte/Angular), parent context, errors    |
+| **Cmd+Shift+X** then drag a region    | Screenshot, elements within bounds, DOM structure, source components, visual analysis           |
 | **Record a flow** (via widget)        | Clicks, scrolls, inputs, network requests, console errors, layout shifts           |
 | **Activity buffer** (last 30s)        | Background capture of interactions, network, and errors without explicit recording |
 | **Run an audit**                      | Console errors, network failures, performance metrics, accessibility issues        |
@@ -53,6 +53,40 @@ All data flows through [MCP](https://modelcontextprotocol.io) so any compatible 
  styles, network,                      for browser                      understand what
  console, screenshots                  visibility                       you're seeing
 ```
+
+## Automated Testing & CI Integration
+
+Clueprint supports headless environments for automated visual regression, accessibility audits, and responsive testing.
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `inspect` | Capture element details, computed styles, and run improvement checks |
+| `audit` | Run page diagnostics: console errors, network failures, performance metrics |
+| `snapshot_dom` / `diff_dom_snapshots` | Track DOM changes between states |
+
+### Improvement Checks
+
+Enable `suggestImprovements` to receive structured warnings with source locations:
+
+```javascript
+mcp__clueprint__inspect({ suggestImprovements: true })
+```
+
+**Responsive issues detected:**
+- Fixed widths that overflow mobile viewports
+- Touch targets below WCAG 2.5.5 minimum (44×44px)
+- Off-screen positioned elements
+
+**Accessibility issues detected:**
+- Missing alt text on images
+- Form inputs without labels
+- Color contrast violations
+- Heading hierarchy problems
+- Keyboard accessibility gaps
+
+All warnings include source file locations when framework detection is available (React, Vue, Svelte, Angular).
 
 ## CLI
 
